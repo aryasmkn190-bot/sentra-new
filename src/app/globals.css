@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-latar text-tinta antialiased;
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@layer components {
+  .btn-utama {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-hijau px-5 py-3 text-sm font-bold text-white transition hover:bg-hijau-tua disabled:opacity-40 disabled:pointer-events-none;
+  }
+  .btn-garis {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-hijau px-5 py-3 text-sm font-bold text-hijau transition hover:bg-hijau-muda;
+  }
+  .kartu {
+    @apply rounded-2xl bg-white shadow-sm border border-black/5;
+  }
+  .input {
+    @apply w-full rounded-xl border border-black/10 bg-white px-4 py-3 text-sm outline-none focus:border-hijau focus:ring-2 focus:ring-hijau/20;
+  }
+  .label {
+    @apply mb-1 block text-xs font-semibold text-tinta/70;
+  }
+}
+
+::selection {
+  background: #ffd54a;
+}

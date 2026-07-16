@@ -1,0 +1,622 @@
+// KilatMart — skema database sesuai PRD §10.3 (ERD)
+// Catatan implementasi:
+// - Semua nominal uang disimpan sebagai Int (Rupiah tanpa sen).
+// - service_zones.polygon disimpan sebagai Json [[lat,lng],...]; pengecekan
+//   point-in-polygon dilakukan di aplikasi (src/lib/geo.ts). Untuk skala besar,
+//   migrasikan ke PostGIS geometry sesuai rekomendasi PRD.
+// - Enum memakai String agar selaras dengan ERD (varchar) dan mudah dievolusi.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  String    @id @default(uuid())
+  phone_number        String    @unique
+  name                String    @default("")
+  email               String?
+  date_of_birth       DateTime?
+  is_age_verified     Boolean   @default(false)
+  referral_code       String    @unique
+  referred_by_user_id String?
+  status              String    @default("active") // active | blocked
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+  deleted_at          DateTime? // soft delete (UU PDP)
+
+  addresses        Address[]
+  carts            Cart[]
+  orders           Order[]
+  reviews          Review[]
+  freshness_claims FreshnessClaim[]
+  voucher_usages   VoucherUsage[]
+  notifications    Notification[]
+  announcement_reads UserAnnouncementRead[]
+  referrals_made   Referral[]       @relation("Referrer")
+  referral_record  Referral?        @relation("Referee")
+
+  @@map("users")
+}
+
+model Address {
+  id              String   @id @default(uuid())
+  user_id         String
+  label           String   @default("rumah") // rumah | kantor | lainnya
+  recipient_name  String
+  recipient_phone String
+  full_address    String
+  latitude        Float
+  longitude       Float
+  courier_note    String?
+  is_default      Boolean  @default(false)
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  user   User    @relation(fields: [user_id], references: [id])
+  orders Order[]
+
+  @@map("addresses")
+}
+
+model WaitingList {
+  id           String   @id @default(uuid())
+  phone        String
+  email        String?
+  address_text String
+  latitude     Float
+  longitude    Float
+  created_at   DateTime @default(now())
+
+  @@map("waiting_lists")
+}
+
+model Hub {
+  id              String   @id @default(uuid())
+  code            String   @unique
+  name            String
+  address         String
+  latitude        Float
+  longitude       Float
+  operating_hours Json     @default("{\"open\":\"00:00\",\"close\":\"24:00\"}")
+  is_active       Boolean  @default(true)
+  created_at      DateTime @default(now())
+
+  service_zones  ServiceZone[]
+  hub_stocks     HubStock[]
+  orders         Order[]
+  partners       Partner[]
+  picking_tasks  PickingTask[]
+  carts          Cart[]
+
+  @@map("hubs")
+}
+
+model ServiceZone {
+  id                      String  @id @default(uuid())
+  hub_id                  String
+  name                    String
+  polygon                 Json // [[lat,lng], ...]
+  delivery_fee_base       Int
+  free_delivery_threshold Int
+  min_order_amount        Int
+  is_active               Boolean @default(true)
+
+  hub Hub @relation(fields: [hub_id], references: [id])
+
+  @@map("service_zones")
+}
+
+model Partner {
+  id            String   @id @default(uuid())
+  hub_id        String
+  role          String // picker | driver
+  name          String
+  phone         String   @unique
+  vehicle_plate String?
+  status        String   @default("active") // active | inactive | suspended
+  created_at    DateTime @default(now())
+
+  hub            Hub            @relation(fields: [hub_id], references: [id])
+  picking_tasks  PickingTask[]
+  delivery_tasks DeliveryTask[]
+
+  @@map("partners")
+}
+
+model Category {
+  id        String  @id @default(uuid())
+  parent_id String?
+  name      String
+  slug      String  @unique
+  icon      String  @default("🛒") // emoji ikon; ganti icon_url saat aset siap
+  image_url String? // URL gambar kategori
+  sort_order Int    @default(0)
+  is_active Boolean @default(true)
+
+  parent   Category?  @relation("CategoryTree", fields: [parent_id], references: [id])
+  children Category[] @relation("CategoryTree")
+  products Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id                String   @id @default(uuid())
+  sku               String   @unique
+  category_id       String
+  name              String
+  slug              String   @unique
+  description       String   @default("")
+  unit              String   @default("pcs") // pcs | kg | pack | liter
+  weight_gram       Int      @default(0)
+  base_price        Int
+  compare_at_price  Int? // harga coret (diskon)
+  is_age_restricted Boolean  @default(false)
+  max_qty_per_order Int      @default(10)
+  status            String   @default("active") // active | inactive | archived
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  category    Category       @relation(fields: [category_id], references: [id])
+  images      ProductImage[]
+  hub_stocks  HubStock[]
+  cart_items  CartItem[]
+  order_items OrderItem[]
+
+  @@map("products")
+}
+
+model ProductImage {
+  id         String  @id @default(uuid())
+  product_id String
+  image_url  String
+  sort_order Int     @default(0)
+  is_primary Boolean @default(false)
+
+  product Product @relation(fields: [product_id], references: [id])
+
+  @@map("product_images")
+}
+
+model HubStock {
+  id                  String   @id @default(uuid())
+  hub_id              String
+  product_id          String
+  price_override      Int?
+  stock_qty           Int      @default(0)
+  reserved_qty        Int      @default(0)
+  rack_location       String   @default("")
+  low_stock_threshold Int      @default(5)
+  updated_at          DateTime @updatedAt
+
+  hub             Hub             @relation(fields: [hub_id], references: [id])
+  product         Product         @relation(fields: [product_id], references: [id])
+  stock_movements StockMovement[]
+
+  @@unique([hub_id, product_id])
+  @@map("hub_stocks")
+}
+
+model StockMovement {
+  id             String   @id @default(uuid())
+  hub_stock_id   String
+  type           String // in | out | adjustment | reserve | release
+  qty            Int
+  reference_type String? // order | opname | po
+  reference_id   String?
+  note           String?
+  created_by     String?
+  created_at     DateTime @default(now())
+
+  hub_stock HubStock @relation(fields: [hub_stock_id], references: [id])
+
+  @@map("stock_movements")
+}
+
+model Cart {
+  id            String   @id @default(uuid())
+  user_id       String?
+  session_token String?  @unique
+  hub_id        String
+  status        String   @default("active") // active | converted | abandoned
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  user  User?      @relation(fields: [user_id], references: [id])
+  hub   Hub        @relation(fields: [hub_id], references: [id])
+  items CartItem[]
+
+  @@map("carts")
+}
+
+model CartItem {
+  id         String   @id @default(uuid())
+  cart_id    String
+  product_id String
+  qty        Int
+  note       String?
+  created_at DateTime @default(now())
+
+  cart    Cart    @relation(fields: [cart_id], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [product_id], references: [id])
+
+  @@unique([cart_id, product_id])
+  @@map("cart_items")
+}
+
+model Order {
+  id                      String    @id @default(uuid())
+  order_number            String    @unique
+  user_id                 String
+  hub_id                  String
+  address_id              String?
+  drop_point_id           String?
+  address_snapshot        Json?
+  status                  String    @default("pending_payment")
+  subtotal_amount         Int
+  discount_amount         Int       @default(0)
+  delivery_fee            Int       @default(0)
+  service_fee             Int       @default(0)
+  tip_amount              Int       @default(0)
+  total_amount            Int
+  substitution_preference String    @default("refund") // replace | refund
+  estimated_delivery_at   DateTime?
+  scheduled_at            DateTime?
+  delivery_note           String?
+  cancelled_reason        String?
+  created_at              DateTime  @default(now())
+  completed_at            DateTime?
+
+  user             User                 @relation(fields: [user_id], references: [id])
+  hub              Hub                  @relation(fields: [hub_id], references: [id])
+  address          Address?             @relation(fields: [address_id], references: [id])
+  dropPoint        DropPoint?           @relation(fields: [drop_point_id], references: [id])
+  items            OrderItem[]
+  status_histories OrderStatusHistory[]
+  payments         Payment[]
+  refunds          Refund[]
+  picking_task     PickingTask?
+  delivery_task    DeliveryTask?
+  review           Review?
+  voucher_usage    VoucherUsage?
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id                     String  @id @default(uuid())
+  order_id               String
+  product_id             String
+  product_name_snapshot  String
+  price_snapshot         Int
+  qty_ordered            Int
+  qty_fulfilled          Int     @default(0)
+  substituted_product_id String?
+  status                 String  @default("fulfilled") // fulfilled | oos | substituted | refunded
+  subtotal               Int
+
+  order            Order            @relation(fields: [order_id], references: [id])
+  product          Product          @relation(fields: [product_id], references: [id])
+  freshness_claims FreshnessClaim[]
+
+  @@map("order_items")
+}
+
+model OrderStatusHistory {
+  id         String   @id @default(uuid())
+  order_id   String
+  from_status String
+  to_status  String
+  actor_type String // system | user | admin | partner
+  actor_id   String?
+  note       String?
+  created_at DateTime @default(now())
+
+  order Order @relation(fields: [order_id], references: [id])
+
+  @@map("order_status_histories")
+}
+
+model Payment {
+  id                     String    @id @default(uuid())
+  order_id               String
+  gateway                String    @default("mock") // mock | midtrans | xendit
+  method                 String    @default("ewallet") // ewallet | qris | va | card
+  gateway_transaction_id String?   @unique
+  amount                 Int
+  status                 String    @default("pending") // pending | paid | failed | expired | refunded
+  paid_at                DateTime?
+  expired_at             DateTime
+  raw_payload            Json?
+  created_at             DateTime  @default(now())
+
+  order   Order    @relation(fields: [order_id], references: [id])
+  refunds Refund[]
+
+  @@map("payments")
+}
+
+model Refund {
+  id           String   @id @default(uuid())
+  payment_id   String
+  order_id     String
+  amount       Int
+  type         String // full | partial
+  reason       String
+  status       String   @default("pending") // pending | processed | failed
+  processed_by String?
+  created_at   DateTime @default(now())
+
+  payment Payment @relation(fields: [payment_id], references: [id])
+  order   Order   @relation(fields: [order_id], references: [id])
+
+  @@map("refunds")
+}
+
+model Voucher {
+  id               String   @id @default(uuid())
+  code             String   @unique
+  name             String
+  type             String // fixed | percentage | free_delivery
+  value            Int
+  max_discount     Int?
+  min_order_amount Int      @default(0)
+  quota_total      Int      @default(0)
+  quota_per_user   Int      @default(1)
+  target_segment   String   @default("all") // all | new_user | custom
+  start_at         DateTime
+  end_at           DateTime
+  is_active        Boolean  @default(true)
+
+  usages            VoucherUsage[]
+  referrer_rewards  Referral[]     @relation("ReferrerVoucher")
+  referee_rewards   Referral[]     @relation("RefereeVoucher")
+
+  @@map("vouchers")
+}
+
+model VoucherUsage {
+  id               String   @id @default(uuid())
+  voucher_id       String
+  user_id          String
+  order_id         String   @unique
+  discount_applied Int
+  used_at          DateTime @default(now())
+
+  voucher Voucher @relation(fields: [voucher_id], references: [id])
+  user    User    @relation(fields: [user_id], references: [id])
+  order   Order   @relation(fields: [order_id], references: [id])
+
+  @@map("voucher_usages")
+}
+
+model Referral {
+  id                  String    @id @default(uuid())
+  referrer_user_id    String
+  referee_user_id     String    @unique
+  status              String    @default("pending") // pending | rewarded | invalid
+  referrer_voucher_id String?
+  referee_voucher_id  String?
+  rewarded_at         DateTime?
+  created_at          DateTime  @default(now())
+
+  referrer         User     @relation("Referrer", fields: [referrer_user_id], references: [id])
+  referee          User     @relation("Referee", fields: [referee_user_id], references: [id])
+  referrer_voucher Voucher? @relation("ReferrerVoucher", fields: [referrer_voucher_id], references: [id])
+  referee_voucher  Voucher? @relation("RefereeVoucher", fields: [referee_voucher_id], references: [id])
+
+  @@map("referrals")
+}
+
+model Review {
+  id         String   @id @default(uuid())
+  order_id   String   @unique
+  user_id    String
+  rating     Int
+  comment    String?
+  created_at DateTime @default(now())
+
+  order Order @relation(fields: [order_id], references: [id])
+  user  User  @relation(fields: [user_id], references: [id])
+
+  @@map("reviews")
+}
+
+model FreshnessClaim {
+  id              String    @id @default(uuid())
+  order_item_id   String
+  user_id         String
+  photo_url       String
+  reason          String
+  status          String    @default("submitted") // submitted | approved | rejected
+  resolution_type String? // refund | voucher | replacement
+  handled_by      String?
+  created_at      DateTime  @default(now())
+  resolved_at     DateTime?
+
+  order_item OrderItem @relation(fields: [order_item_id], references: [id])
+  user       User      @relation(fields: [user_id], references: [id])
+
+  @@map("freshness_claims")
+}
+
+model Notification {
+  id       String    @id @default(uuid())
+  user_id  String
+  order_id String?
+  channel  String    @default("push") // push | whatsapp | email
+  title    String
+  body     String
+  status   String    @default("queued") // queued | sent | failed
+  sent_at  DateTime?
+
+  user User @relation(fields: [user_id], references: [id])
+
+  @@map("notifications")
+}
+
+model PickingTask {
+  id         String    @id @default(uuid())
+  order_id   String    @unique
+  hub_id     String
+  picker_id  String?
+  status     String    @default("queued") // queued | picking | packed
+  started_at DateTime?
+  packed_at  DateTime?
+  created_at DateTime  @default(now())
+
+  order  Order    @relation(fields: [order_id], references: [id])
+  hub    Hub      @relation(fields: [hub_id], references: [id])
+  picker Partner? @relation(fields: [picker_id], references: [id])
+
+  @@map("picking_tasks")
+}
+
+model DeliveryTask {
+  id              String    @id @default(uuid())
+  order_id        String    @unique
+  driver_id       String?
+  status          String    @default("assigned") // assigned | picked_up | on_the_way | arrived | delivered | failed
+  proof_photo_url String?
+  current_lat     Float?
+  current_lng     Float?
+  assigned_at     DateTime  @default(now())
+  delivered_at    DateTime?
+
+  order  Order    @relation(fields: [order_id], references: [id])
+  driver Partner? @relation(fields: [driver_id], references: [id])
+
+  @@map("delivery_tasks")
+}
+
+model Banner {
+  id         String   @id @default(uuid())
+  title      String
+  image_url  String   @default("")
+  target_url String   @default("/")
+  placement  String   @default("home_top") // home_top | home_mid | category
+  sort_order Int      @default(0)
+  start_at   DateTime
+  end_at     DateTime
+  is_active  Boolean  @default(true)
+
+  @@map("banners")
+}
+
+model Article {
+  id           String    @id @default(uuid())
+  title        String
+  slug         String    @unique
+  category     String // resep | lifestyle | news
+  content      String
+  cover_url    String    @default("")
+  author_id    String
+  status       String    @default("draft") // draft | published | archived
+  published_at DateTime?
+
+  author AdminUser @relation(fields: [author_id], references: [id])
+
+  @@map("articles")
+}
+
+model Role {
+  id          String @id @default(uuid())
+  name        String @unique
+  permissions Json   @default("[]")
+
+  admin_users AdminUser[]
+
+  @@map("roles")
+}
+
+model AdminUser {
+  id            String   @id @default(uuid())
+  role_id       String
+  name          String
+  email         String   @unique
+  password_hash String
+  status        String   @default("active") // active | inactive
+  created_at    DateTime @default(now())
+
+  role       Role       @relation(fields: [role_id], references: [id])
+  audit_logs AuditLog[]
+  articles   Article[]
+
+  @@map("admin_users")
+}
+
+model AuditLog {
+  id            String   @id @default(uuid())
+  admin_user_id String
+  action        String // create | update | delete
+  entity_type   String
+  entity_id     String
+  before_data   Json?
+  after_data    Json?
+  ip_address    String   @default("")
+  created_at    DateTime @default(now())
+
+  admin_user AdminUser @relation(fields: [admin_user_id], references: [id])
+
+  @@map("audit_logs")
+}
+
+// Tabel pendukung OTP (tidak ada di ERD; kebutuhan teknis FR-1.2)
+model OtpCode {
+  id         String   @id @default(uuid())
+  phone      String
+  audience   String   @default("user") // user | partner
+  code_hash  String
+  attempts   Int      @default(0)
+  expires_at DateTime
+  created_at DateTime @default(now())
+
+  @@index([phone, audience])
+  @@map("otp_codes")
+}
+
+model Announcement {
+  id         String   @id @default(uuid())
+  title      String
+  body       String
+  type       String   @default("info") // info | promo | discount | release | warning
+  target_url String?  // link opsional
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  reads      UserAnnouncementRead[]
+
+  @@map("announcements")
+}
+
+model UserAnnouncementRead {
+  user_id         String
+  announcement_id String
+  read_at         DateTime @default(now())
+
+  user         User         @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  announcement Announcement @relation(fields: [announcement_id], references: [id], onDelete: Cascade)
+
+  @@id([user_id, announcement_id])
+  @@map("user_announcement_reads")
+}
+
+// Drop points untuk sistem pengantaran tanpa alamat lengkap
+model DropPoint {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  address   String   @default("")
+  is_active Boolean  @default(true)
+  sort_order Int     @default(0)
+  created_at DateTime @default(now())
+
+  orders    Order[]
+
+  @@map("drop_points")
+}
