@@ -8,6 +8,7 @@ import { simulatePaymentSuccess, cancelOrder, reorder } from "@/actions/checkout
 import { StatusBadge } from "@/components/StatusBadge";
 import { ActionButton } from "@/components/ActionButton";
 import { ReviewForm } from "./ReviewForm";
+import { ProductReviewForm } from "@/components/ProductReviewForm";
 
 export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -19,7 +20,15 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   const order = await db.order.findFirst({
     where: { id, user_id: session.sub },
     include: {
-      items: true,
+      items: {
+        include: {
+          product: {
+            include: {
+              images: { orderBy: [{ is_primary: "desc" }, { sort_order: "asc" }], take: 1 },
+            },
+          },
+        },
+      },
       payments: { orderBy: { created_at: "desc" } },
       status_histories: { orderBy: { created_at: "asc" } },
       delivery_task: { include: { driver: true } },
@@ -30,6 +39,16 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     },
   });
   if (!order) notFound();
+
+  // Ulasan produk yang sudah pernah ditulis untuk order ini
+  const productReviews =
+    order.status === "completed"
+      ? await db.productReview.findMany({
+          where: { order_id: order.id, user_id: session.sub },
+          select: { product_id: true, rating: true, comment: true },
+        })
+      : [];
+  const reviewedProductIds = new Set(productReviews.map((r) => r.product_id));
 
   const payment = order.payments[0];
   const addr = (order.address_snapshot ?? {}) as Record<string, string>;
@@ -129,18 +148,38 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
 
       {/* Item */}
       <section className="kartu divide-y divide-black/5">
-        {order.items.map((i) => (
-          <div key={i.id} className="flex items-center justify-between gap-2 p-3 text-sm">
-            <div>
-              <p className="font-semibold">{i.product_name_snapshot}</p>
-              <p className="text-xs text-tinta/50">
-                {i.qty_ordered} × {rupiah(i.price_snapshot)}
-                {i.status === "oos" && <span className="ml-1 font-bold text-merah">· habis, akan direfund</span>}
-              </p>
+        {order.items.map((i) => {
+          const imageUrl = i.product?.images?.[0]?.image_url || null;
+          return (
+            <div key={i.id} className="flex items-center gap-3 p-3 text-sm">
+              <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-hijau-muda">
+                {imageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={imageUrl}
+                    alt={i.product_name_snapshot}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <span className="flex h-full w-full items-center justify-center text-2xl" aria-hidden>
+                    🛍️
+                  </span>
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="line-clamp-2 font-semibold">{i.product_name_snapshot}</p>
+                <p className="text-xs text-tinta/50">
+                  Varian: {i.variant_name_snapshot?.trim() || "—"} · {i.qty_ordered} ×{" "}
+                  {rupiah(i.price_snapshot)}
+                  {i.status === "oos" && (
+                    <span className="ml-1 font-bold text-merah">· habis, akan direfund</span>
+                  )}
+                </p>
+              </div>
+              <span className="shrink-0 font-extrabold tabular-nums">{rupiah(i.subtotal)}</span>
             </div>
-            <span className="font-extrabold tabular-nums">{rupiah(i.subtotal)}</span>
-          </div>
-        ))}
+          );
+        })}
       </section>
 
       {/* Ringkasan */}
@@ -162,7 +201,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       <section className="kartu p-4 text-sm">
         <p className="text-xs font-extrabold uppercase text-hijau">Pengambilan di</p>
         {order.drop_point_id ? (
-          <p className="font-semibold">Drop Point: {addr.full_address || "Drop Point"}</p>
+          <p className="font-semibold">Drop Point: {order.dropPoint?.name || addr.full_address || "Drop Point"}</p>
         ) : addr.recipient_name ? (
           <>
             <p className="font-semibold">{addr.recipient_name} · {addr.recipient_phone}</p>
@@ -171,7 +210,12 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
         ) : (
           <p className="text-xs text-tinta/60">Informasi pengambilan tidak tersedia</p>
         )}
-        {order.delivery_note && <p className="mt-1 text-xs italic text-tinta/60">"{order.delivery_note}"</p>}
+        {order.delivery_note && (
+          <div className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs">
+            <p className="font-extrabold text-amber-900">Catatan untuk penjual</p>
+            <p className="mt-0.5 whitespace-pre-wrap text-amber-950/80">{order.delivery_note}</p>
+          </div>
+        )}
       </section>
 
       {/* Aksi */}
@@ -183,10 +227,51 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
         )}
         {order.review && (
           <p className="kartu p-4 text-sm">
-            Penilaianmu: {"⭐".repeat(order.review.rating)}
-            {order.review.comment && <span className="block text-xs text-tinta/60">"{order.review.comment}"</span>}
+            Penilaian pesanan: {"⭐".repeat(order.review.rating)}
+            {order.review.comment && <span className="block text-xs text-tinta/60">&quot;{order.review.comment}&quot;</span>}
           </p>
         )}
+
+        {/* Ulasan per produk — hanya order completed; tampil juga di halaman produk */}
+        {order.status === "completed" && (
+          <section className="kartu space-y-4 p-4">
+            <div>
+              <p className="text-sm font-extrabold">Ulasan produk</p>
+              <p className="text-[11px] text-tinta/50">
+                Nilai tiap produk yang kamu terima. Ulasan tampil di halaman produk.
+              </p>
+            </div>
+            {order.items
+              .filter((it) => it.status === "fulfilled" || it.status === "substituted")
+              .map((it) => {
+                const already = productReviews.find((r) => r.product_id === it.product_id);
+                if (already || reviewedProductIds.has(it.product_id)) {
+                  const r = already || productReviews.find((x) => x.product_id === it.product_id)!;
+                  return (
+                    <div key={it.id} className="rounded-xl border border-black/5 bg-slate-50 px-3 py-2 text-sm">
+                      <p className="font-semibold text-slate-800">{it.product_name_snapshot}</p>
+                      <p className="text-xs text-amber-600">{"⭐".repeat(r.rating)}</p>
+                      {r.comment && <p className="text-xs text-tinta/60">&quot;{r.comment}&quot;</p>}
+                      <p className="mt-1 text-[10px] font-semibold text-emerald-700">Tampil di halaman produk</p>
+                    </div>
+                  );
+                }
+                return (
+                  <div key={it.id} className="rounded-xl border border-black/5 p-3">
+                    <ProductReviewForm
+                      productId={it.product_id}
+                      orderId={order.id}
+                      productName={it.product_name_snapshot}
+                    />
+                  </div>
+                );
+              })}
+            {order.items.filter((it) => it.status === "fulfilled" || it.status === "substituted").length === 0 && (
+              <p className="text-xs text-slate-400">Tidak ada item yang bisa diulas pada pesanan ini.</p>
+            )}
+          </section>
+        )}
+
         {["completed", "cancelled"].includes(order.status) && (
           <ActionButton action={reorder.bind(null, order.id)} className="btn-garis">
             🔁 Pesan lagi

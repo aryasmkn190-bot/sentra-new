@@ -51,24 +51,61 @@ const NAV: NavSection[] = [
         ),
         label: "Kategori",
       },
+      {
+        href: "/admin/laporan",
+        icon: (
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="18" y1="20" x2="18" y2="10" />
+            <line x1="12" y1="20" x2="12" y2="4" />
+            <line x1="6" y1="20" x2="6" y2="14" />
+          </svg>
+        ),
+        label: "Laporan Online",
+      },
+    ],
+  },
+  {
+    label: "Order Langsung",
+    items: [
+      {
+        href: "/admin/order-langsung",
+        icon: (
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+            <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+            <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+            <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+            <rect x="7" y="7" width="10" height="10" rx="1" />
+          </svg>
+        ),
+        label: "Pesanan Langsung",
+      },
+      {
+        href: "/admin/order-langsung/produk",
+        icon: (
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <path d="M7 7h.01M7 12h10M7 17h10" />
+          </svg>
+        ),
+        label: "Produk Langsung",
+      },
+      {
+        href: "/admin/order-langsung/laporan",
+        icon: (
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="18" y1="20" x2="18" y2="10" />
+            <line x1="12" y1="20" x2="12" y2="4" />
+            <line x1="6" y1="20" x2="6" y2="14" />
+          </svg>
+        ),
+        label: "Laporan Langsung",
+      },
     ],
   },
   {
     label: "Operasional",
     items: [
-      {
-        href: "/admin/inventori",
-        icon: (
-          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <polyline points="14 2 14 8 20 8" />
-            <line x1="16" y1="13" x2="8" y2="13" />
-            <line x1="16" y1="17" x2="8" y2="17" />
-            <polyline points="10 9 9 9 8 9" />
-          </svg>
-        ),
-        label: "Inventori",
-      },
       {
         href: "/admin/voucher",
         icon: (
@@ -113,6 +150,24 @@ const NAV: NavSection[] = [
         ),
         label: "Pengumuman",
       },
+      {
+        href: "/admin/chat",
+        icon: (
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+          </svg>
+        ),
+        label: "Live Chat",
+      },
+      {
+        href: "/admin/ulasan",
+        icon: (
+          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+          </svg>
+        ),
+        label: "Ulasan",
+      },
     ],
   },
 ];
@@ -121,14 +176,22 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const session = await getSession("admin");
   if (!session) return <div className="min-h-dvh bg-latar">{children}</div>; // halaman login
 
-  // Badge: count pesanan pending_payment untuk notifikasi sidebar
+  // Badge: pesanan pending + chat unread
   const { db } = await import("@/lib/db");
-  const pendingOrders = await db.order.count({ where: { status: "pending_payment" } });
+  const [pendingOrders, pendingDirect, chatUnreadAgg] = await Promise.all([
+    db.order.count({ where: { status: "pending_payment" } }),
+    db.directOrder.count({ where: { status: "pending_payment" } }),
+    db.chatThread.aggregate({ _sum: { unread_admin: true }, where: { status: "open" } }),
+  ]);
+  const chatUnread = chatUnreadAgg._sum.unread_admin ?? 0;
   const navWithBadge: NavSection[] = NAV.map((s) => ({
     ...s,
-    items: s.items.map((item) =>
-      item.href === "/admin/pesanan" ? { ...item, badge: pendingOrders || undefined } : item
-    ),
+    items: s.items.map((item) => {
+      if (item.href === "/admin/pesanan") return { ...item, badge: pendingOrders || undefined };
+      if (item.href === "/admin/order-langsung") return { ...item, badge: pendingDirect || undefined };
+      if (item.href === "/admin/chat") return { ...item, badge: chatUnread || undefined };
+      return item;
+    }),
   }));
 
   async function handleLogout() {

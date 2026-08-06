@@ -49,7 +49,8 @@ export async function settlePayment(paymentId: string, gatewayTxnId?: string, ra
 
     const order = payment.order;
     for (const item of order.items) {
-      await commitStock(tx, order.hub_id, item.product_id, item.qty_ordered, order.id);
+      if (!item.variant_id) continue;
+      await commitStock(tx, order.hub_id, item.variant_id, item.qty_ordered, order.id);
     }
     await transitionOrder(tx, order.id, order.status, "confirmed", "system", undefined, "Pembayaran diterima");
     await tx.pickingTask.create({
@@ -72,7 +73,8 @@ export async function expireIfOverdue(orderId: string) {
 
     await tx.payment.update({ where: { id: payment.id }, data: { status: "expired" } });
     for (const item of order.items) {
-      await releaseStock(tx, order.hub_id, item.product_id, item.qty_ordered, order.id);
+      if (!item.variant_id) continue;
+      await releaseStock(tx, order.hub_id, item.variant_id, item.qty_ordered, order.id);
     }
     await transitionOrder(tx, order.id, "pending_payment", "cancelled", "system", undefined, "Pembayaran melewati batas waktu (15 menit)");
   });

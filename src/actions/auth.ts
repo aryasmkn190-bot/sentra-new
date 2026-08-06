@@ -60,9 +60,14 @@ export async function verifyUserOtp(_prev: unknown, formData: FormData): Promise
       } else {
         for (const item of guestCart.items) {
           await db.cartItem.upsert({
-            where: { cart_id_product_id: { cart_id: userCart.id, product_id: item.product_id } },
+            where: { cart_id_variant_id: { cart_id: userCart.id, variant_id: item.variant_id } },
             update: { qty: { increment: item.qty } },
-            create: { cart_id: userCart.id, product_id: item.product_id, qty: item.qty },
+            create: {
+              cart_id: userCart.id,
+              product_id: item.product_id,
+              variant_id: item.variant_id,
+              qty: item.qty,
+            },
           });
         }
         await db.cart.update({ where: { id: guestCart.id }, data: { status: "abandoned" } });
@@ -85,15 +90,50 @@ export async function updateUserProfile(
   const name = String(formData.get("name") || "").trim();
   const email = String(formData.get("email") || "").trim() || null;
   const dobRaw = String(formData.get("date_of_birth") || "").trim();
-  const date_of_birth = dobRaw ? new Date(dobRaw) : null;
+  // Parse date-only (YYYY-MM-DD) sebagai UTC midnight agar tidak geser hari
+  let date_of_birth: Date | null = null;
+  if (dobRaw) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dobRaw);
+    if (!m) return { ok: false, error: "Format tanggal lahir tidak valid." };
+    const y = Number(m[1]);
+    const mo = Number(m[2]);
+    const d = Number(m[3]);
+    const dt = new Date(Date.UTC(y, mo - 1, d));
+    if (
+      dt.getUTCFullYear() !== y ||
+      dt.getUTCMonth() !== mo - 1 ||
+      dt.getUTCDate() !== d
+    ) {
+      return { ok: false, error: "Tanggal lahir tidak valid." };
+    }
+    const now = new Date();
+    if (y < 1940 || dt.getTime() > Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())) {
+      return { ok: false, error: "Tanggal lahir di luar rentang yang diizinkan." };
+    }
+    date_of_birth = dt;
+  }
+  const preferredDropPointId = String(formData.get("preferred_drop_point_id") || "").trim() || null;
 
   if (!name) return { ok: false, error: "Nama tidak boleh kosong." };
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
     return { ok: false, error: "Format email tidak valid." };
 
+  if (preferredDropPointId) {
+    const dropPoint = await db.dropPoint.findFirst({
+      where: { id: preferredDropPointId, is_active: true },
+      select: { id: true },
+    });
+    if (!dropPoint) return { ok: false, error: "Drop point tidak valid atau tidak aktif." };
+  }
+
   await db.user.update({
     where: { id: session.sub },
-    data: { name, email, date_of_birth },
+    data: {
+      name,
+      email,
+      date_of_birth,
+      preferred_drop_point_id: preferredDropPointId,
+    },
   });
 
   return { ok: true };

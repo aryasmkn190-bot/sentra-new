@@ -21,6 +21,29 @@ body {
   }
 }
 
+@layer base {
+  /*
+   * Form controls MUST set explicit text color.
+   * Without this, a parent with text-white (e.g. sticky brand header)
+   * makes input/select/textarea text invisible on light backgrounds.
+   */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="image"]):not([type="reset"]),
+  select,
+  textarea {
+    color: #14201a; /* tinta */
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: rgb(20 32 26 / 0.4);
+  }
+
+  option {
+    color: #14201a;
+    background-color: #ffffff;
+  }
+}
+
 @layer components {
   .btn-utama {
     @apply inline-flex items-center justify-center gap-2 rounded-xl bg-hijau px-5 py-3 text-sm font-bold text-white transition hover:bg-hijau-tua disabled:opacity-40 disabled:pointer-events-none;
@@ -32,7 +55,7 @@ body {
     @apply rounded-2xl bg-white shadow-sm border border-black/5;
   }
   .input {
-    @apply w-full rounded-xl border border-black/10 bg-white px-4 py-3 text-sm outline-none focus:border-hijau focus:ring-2 focus:ring-hijau/20;
+    @apply w-full rounded-xl border border-black/10 bg-white px-4 py-3 text-sm text-tinta placeholder:text-tinta/40 outline-none focus:border-hijau focus:ring-2 focus:ring-hijau/20;
   }
   .label {
     @apply mb-1 block text-xs font-semibold text-tinta/70;

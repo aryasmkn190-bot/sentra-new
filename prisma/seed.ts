@@ -164,12 +164,36 @@ async function main() {
         compare_at_price: compareAt,
       },
     });
+    const sku = product.sku;
+    const variant = await db.productVariant.upsert({
+      where: { sku: `${sku}-DEF` },
+      update: {
+        name: "Standar",
+        unit,
+        base_price: price,
+        compare_at_price: compareAt,
+        is_default: true,
+        is_active: true,
+      },
+      create: {
+        product_id: product.id,
+        sku: `${sku}-DEF`,
+        name: "Standar",
+        unit,
+        base_price: price,
+        compare_at_price: compareAt,
+        is_default: true,
+        is_active: true,
+        sort_order: 0,
+      },
+    });
     await db.hubStock.upsert({
-      where: { hub_id_product_id: { hub_id: hub.id, product_id: product.id } },
-      update: {},
+      where: { hub_id_variant_id: { hub_id: hub.id, variant_id: variant.id } },
+      update: { stock_qty: stock, rack_location: rack },
       create: {
         hub_id: hub.id,
         product_id: product.id,
+        variant_id: variant.id,
         stock_qty: stock,
         rack_location: rack,
       },

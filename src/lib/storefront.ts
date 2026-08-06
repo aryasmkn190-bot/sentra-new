@@ -13,6 +13,16 @@ export async function getActiveHub() {
   return db.hub.findFirst({ where: { is_active: true }, orderBy: { created_at: "asc" } });
 }
 
+const cartInclude = {
+  items: {
+    include: {
+      product: { include: { images: true } },
+      variant: true,
+    },
+    orderBy: { created_at: "asc" as const },
+  },
+};
+
 /** Keranjang aktif: milik user login, atau guest via cookie km_cart (FR-5.2). */
 export async function getActiveCart(createIfMissing = false) {
   const jar = await cookies();
@@ -23,12 +33,12 @@ export async function getActiveCart(createIfMissing = false) {
   if (session) {
     let cart = await db.cart.findFirst({
       where: { user_id: session.sub, status: "active" },
-      include: { items: { include: { product: { include: { images: true } } }, orderBy: { created_at: "asc" } } },
+      include: cartInclude,
     });
     if (!cart && createIfMissing) {
       cart = await db.cart.create({
         data: { user_id: session.sub, hub_id: hub.id },
-        include: { items: { include: { product: { include: { images: true } } } } },
+        include: cartInclude,
       });
     }
     return cart;
@@ -38,7 +48,7 @@ export async function getActiveCart(createIfMissing = false) {
   if (!token) return null;
   return db.cart.findFirst({
     where: { session_token: token, status: "active" },
-    include: { items: { include: { product: { include: { images: true } } }, orderBy: { created_at: "asc" } } },
+    include: cartInclude,
   });
 }
 

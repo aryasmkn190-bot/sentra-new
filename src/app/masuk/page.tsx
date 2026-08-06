@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
 import LoginForm from "@/components/LoginForm";
 
+export const metadata = { title: "Masuk" };
+
 export default async function LoginPage({
   searchParams,
 }: {
@@ -13,15 +15,15 @@ export default async function LoginPage({
   const { next } = await searchParams;
 
   return (
-    <div className="mx-auto max-w-md px-4 py-10 space-y-6">
-      <div className="text-center space-y-1.5">
+    <div className="mx-auto max-w-md space-y-6 px-4 py-8">
+      <div className="space-y-1.5 text-center">
         <h1 className="text-2xl font-extrabold text-slate-800">Masuk</h1>
         <p className="text-sm text-slate-500">
           Masukkan nomor HP kamu untuk menerima kode OTP via WhatsApp
         </p>
       </div>
 
-      <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-6">
+      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <LoginForm next={next} />
       </div>
 

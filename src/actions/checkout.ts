@@ -43,7 +43,10 @@ export async function placeOrder(_prev: unknown, formData: FormData): Promise<{ 
 
   const dropPointId = String(formData.get("drop_point_id") || "");
   const voucherCode = String(formData.get("voucher_code") || "").trim();
-  const deliveryNote = String(formData.get("delivery_note") || "") || null;
+  // Catatan untuk penjual (UI: seller_note). Kolom DB tetap delivery_note.
+  const sellerNoteRaw =
+    String(formData.get("seller_note") || formData.get("delivery_note") || "").trim();
+  const deliveryNote = sellerNoteRaw ? sellerNoteRaw.slice(0, 500) : null;
   const substitution = formData.get("substitution_preference") === "replace" ? "replace" : "refund";
 
   const cart = await getActiveCart();
@@ -56,16 +59,19 @@ export async function placeOrder(_prev: unknown, formData: FormData): Promise<{ 
   const hub = await db.hub.findUnique({ where: { id: cart.hub_id } });
   if (!hub) return { error: "Hub tidak ditemukan." };
 
-  // Harga efektif per item
+  // Harga efektif per VARIANT
   const stocks = await db.hubStock.findMany({
-    where: { hub_id: hub.id, product_id: { in: cart.items.map((i) => i.product_id) } },
+    where: { hub_id: hub.id, variant_id: { in: cart.items.map((i) => i.variant_id) } },
   });
-  const priceOf = (productId: string, basePrice: number) => {
-    const s = stocks.find((x) => x.product_id === productId);
+  const priceOf = (variantId: string, basePrice: number) => {
+    const s = stocks.find((x) => x.variant_id === variantId);
     return s?.price_override ?? basePrice;
   };
 
-  const subtotal = cart.items.reduce((sum, i) => sum + priceOf(i.product_id, i.product.base_price) * i.qty, 0);
+  const subtotal = cart.items.reduce(
+    (sum, i) => sum + priceOf(i.variant_id, i.variant.base_price) * i.qty,
+    0
+  );
 
   // Min order dari zone? Skip — drop point tidak pakai zone. Minimal Rp 0
   if (subtotal <= 0) return { error: "Keranjang kosong." };
@@ -107,14 +113,20 @@ export async function placeOrder(_prev: unknown, formData: FormData): Promise<{ 
       orderNumber = order.order_number;
 
       for (const item of cart.items) {
-        const ok = await reserveStock(tx, hub.id, item.product_id, item.qty, order.id);
-        if (!ok) throw new Error(`STOK_HABIS:${item.product.name}`);
-        const price = priceOf(item.product_id, item.product.base_price);
+        const ok = await reserveStock(tx, hub.id, item.variant_id, item.qty, order.id);
+        const label =
+          item.variant.name && item.variant.name !== "Standar"
+            ? `${item.product.name} (${item.variant.name})`
+            : item.product.name;
+        if (!ok) throw new Error(`STOK_HABIS:${label}`);
+        const price = priceOf(item.variant_id, item.variant.base_price);
         await tx.orderItem.create({
           data: {
             order_id: order.id,
             product_id: item.product_id,
+            variant_id: item.variant_id,
             product_name_snapshot: item.product.name,
+            variant_name_snapshot: item.variant.name,
             price_snapshot: price,
             qty_ordered: item.qty,
             subtotal: price * item.qty,
@@ -218,11 +230,17 @@ export async function cancelOrder(orderId: string) {
 
       const { releaseStock, restoreStock } = await import("@/lib/stock");
       if (order.status === "pending_payment") {
-        for (const item of order.items) await releaseStock(tx, order.hub_id, item.product_id, item.qty_ordered, order.id);
+        for (const item of order.items) {
+          if (!item.variant_id) continue;
+          await releaseStock(tx, order.hub_id, item.variant_id, item.qty_ordered, order.id);
+        }
         const p = order.payments[0];
         if (p && p.status === "pending") await tx.payment.update({ where: { id: p.id }, data: { status: "failed" } });
       } else {
-        for (const item of order.items) await restoreStock(tx, order.hub_id, item.product_id, item.qty_ordered, order.id);
+        for (const item of order.items) {
+          if (!item.variant_id) continue;
+          await restoreStock(tx, order.hub_id, item.variant_id, item.qty_ordered, order.id);
+        }
         const p = order.payments[0];
         if (p && p.status === "paid") {
           await tx.refund.create({
@@ -255,10 +273,16 @@ export async function reorder(orderId: string) {
   if (!cart) cart = await db.cart.create({ data: { user_id: session.sub, hub_id: order.hub_id } });
 
   for (const item of order.items) {
+    if (!item.variant_id) continue;
     await db.cartItem.upsert({
-      where: { cart_id_product_id: { cart_id: cart.id, product_id: item.product_id } },
+      where: { cart_id_variant_id: { cart_id: cart.id, variant_id: item.variant_id } },
       update: { qty: item.qty_ordered },
-      create: { cart_id: cart.id, product_id: item.product_id, qty: item.qty_ordered },
+      create: {
+        cart_id: cart.id,
+        product_id: item.product_id,
+        variant_id: item.variant_id,
+        qty: item.qty_ordered,
+      },
     });
   }
   redirect("/keranjang");

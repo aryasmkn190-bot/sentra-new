@@ -30,7 +30,7 @@ export async function middleware(req: NextRequest) {
     }
   }
 
-  if (["/checkout", "/pesanan", "/akun"].some((p) => pathname.startsWith(p))) {
+  if (["/checkout", "/pesanan", "/akun", "/order-langsung/selesai"].some((p) => pathname.startsWith(p))) {
     if (!(await hasValidSession(req, "km_user", "user"))) {
       const url = new URL("/masuk", req.url);
       url.searchParams.set("next", pathname);
@@ -42,5 +42,15 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/partner/:path*", "/checkout/:path*", "/checkout", "/pesanan/:path*", "/pesanan", "/akun/:path*", "/akun"],
+  matcher: [
+    "/admin/:path*",
+    "/partner/:path*",
+    "/checkout/:path*",
+    "/checkout",
+    "/pesanan/:path*",
+    "/pesanan",
+    "/akun/:path*",
+    "/akun",
+    "/order-langsung/selesai/:path*",
+  ],
 };

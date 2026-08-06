@@ -4,7 +4,8 @@ export interface IconProps extends React.SVGProps<SVGSVGElement> {
   size?: number;
 }
 
-const PRIMARY = '#F8285A';
+/* Brand red aligned with Sentra logo / MyTelkomsel-like accent */
+const PRIMARY = '#A00000';
 const SECONDARY = 'currentColor';
 
 export const IconHome = ({ size = 20, ...props }: IconProps) => (
@@ -44,6 +45,15 @@ export const IconUser = ({ size = 20, ...props }: IconProps) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" {...props}>
     <path d="M20 21C20 19.6044 20.0001 17.5 16.5 16.5C14.5 15.9282 13.5 15 12 15C10.5 15 9.5 15.9282 7.5 16.5C4 17.5 4 19.6044 4 21" stroke={PRIMARY} strokeWidth="2" strokeLinecap="round" />
     <circle cx="12" cy="7" r="4" stroke={SECONDARY} strokeWidth="2" fill={SECONDARY} fillOpacity="0.1" />
+  </svg>
+);
+
+/** Login / sign-in door icon — used in bottom nav when guest */
+export const IconLogin = ({ size = 20, ...props }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" {...props}>
+    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" stroke={SECONDARY} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill={SECONDARY} fillOpacity="0.08" />
+    <path d="M10 17l5-5-5-5" stroke={PRIMARY} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M15 12H3" stroke={PRIMARY} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
 

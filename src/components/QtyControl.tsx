@@ -4,12 +4,12 @@ import { useState, useTransition } from "react";
 import { setCartQty } from "@/actions/cart";
 
 export function QtyControl({
-  productId,
+  variantId,
   initialQty,
   maxQty,
   compact = false,
 }: {
-  productId: string;
+  variantId: string;
   initialQty: number;
   maxQty: number;
   compact?: boolean;
@@ -23,7 +23,7 @@ export function QtyControl({
     setQty(clamped);
     setError(null);
     startTransition(async () => {
-      const res = await setCartQty(productId, clamped);
+      const res = await setCartQty(variantId, clamped);
       if (res?.error) {
         setError(res.error);
         setQty(qty);
@@ -36,8 +36,10 @@ export function QtyControl({
       <div>
         <button
           onClick={() => update(1)}
-          disabled={pending || maxQty === 0}
-          className={`btn-utama ${compact ? "!px-3 !py-1.5 !text-xs" : "!py-2"} w-full`}
+          disabled={pending || maxQty === 0 || !variantId}
+          className={`inline-flex w-full items-center justify-center rounded-xl bg-[#A00000] font-bold text-white transition hover:bg-[#800000] disabled:opacity-40 ${
+            compact ? "px-3 py-1.5 text-xs" : "px-4 py-2 text-sm"
+          }`}
           aria-label="Tambah ke keranjang"
         >
           {maxQty === 0 ? "Stok Habis" : "+ Tambah"}
@@ -49,20 +51,24 @@ export function QtyControl({
 
   return (
     <div>
-      <div className={`flex items-center justify-between rounded-xl border border-hijau bg-hijau-muda ${compact ? "px-1 py-0.5" : "px-2 py-1"}`}>
+      <div
+        className={`flex items-center justify-between rounded-xl border border-[#A00000]/25 bg-[#FDF0F0] ${
+          compact ? "px-1 py-0.5" : "px-2 py-1"
+        }`}
+      >
         <button
           onClick={() => update(qty - 1)}
           disabled={pending}
-          className="h-8 w-8 rounded-lg text-lg font-bold text-hijau hover:bg-white"
+          className="h-8 w-8 rounded-lg text-lg font-bold text-[#A00000] hover:bg-white"
           aria-label="Kurangi"
         >
           −
         </button>
-        <span className="min-w-6 text-center text-sm font-bold tabular-nums">{qty}</span>
+        <span className="min-w-6 text-center text-sm font-bold tabular-nums text-slate-900">{qty}</span>
         <button
           onClick={() => update(qty + 1)}
           disabled={pending || qty >= maxQty}
-          className="h-8 w-8 rounded-lg text-lg font-bold text-hijau hover:bg-white disabled:opacity-30"
+          className="h-8 w-8 rounded-lg text-lg font-bold text-[#A00000] hover:bg-white disabled:opacity-30"
           aria-label="Tambah"
         >
           +

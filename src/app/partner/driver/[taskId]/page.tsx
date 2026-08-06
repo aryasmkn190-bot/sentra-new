@@ -28,7 +28,7 @@ export default async function DeliveryDetailPage({ params }: { params: Promise<{
         <p className="font-extrabold">{addr.recipient_name}</p>
         <p className="text-tinta/70">{addr.full_address}</p>
         {addr.courier_note && <p className="text-xs italic text-tinta/60">Catatan: "{addr.courier_note}"</p>}
-        {task.order.delivery_note && <p className="text-xs italic text-tinta/60">Instruksi: "{task.order.delivery_note}"</p>}
+        {task.order.delivery_note && <p className="text-xs italic text-tinta/60">Catatan penjual: &quot;{task.order.delivery_note}&quot;</p>}
         <div className="flex gap-2 pt-2">
           <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="btn-garis flex-1 !py-2 !text-xs">
             🗺️ Navigasi

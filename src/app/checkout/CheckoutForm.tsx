@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState } from "react";
 import { placeOrder } from "@/actions/checkout";
 import { rupiah } from "@/lib/money";
 
@@ -9,13 +9,20 @@ type DropPointOpt = { id: string; name: string };
 export function CheckoutForm({
   dropPoints,
   subtotal,
+  preferredDropPointId = null,
 }: {
   dropPoints: DropPointOpt[];
   subtotal: number;
+  preferredDropPointId?: string | null;
 }) {
   const [orderState, orderAction, orderPending] = useActionState(placeOrder, null);
 
   const estimatedTotal = subtotal;
+  const preferredActive =
+    preferredDropPointId && dropPoints.some((dp) => dp.id === preferredDropPointId)
+      ? preferredDropPointId
+      : null;
+  const defaultDropPointId = preferredActive || dropPoints[0]?.id || "";
 
   const card = "rounded-2xl border border-black/5 bg-white p-4 shadow-sm";
 
@@ -30,8 +37,13 @@ export function CheckoutForm({
       <section>
         <h2 className="text-sm font-extrabold text-tinta mb-3">Drop Point Pengambilan</h2>
         <div className={card}>
+          {preferredActive && (
+            <p className="mb-3 rounded-xl bg-hijau-muda px-3 py-2 text-[11px] font-medium leading-relaxed text-hijau-tua">
+              Terisi otomatis dari profilmu. Silakan ganti jika perlu untuk pesanan ini.
+            </p>
+          )}
           <div className="space-y-2">
-            {dropPoints.map((dp, i) => (
+            {dropPoints.map((dp) => (
               <label
                 key={dp.id}
                 className="flex cursor-pointer items-center gap-2 rounded-xl border border-black/10 p-3 has-[:checked]:border-hijau has-[:checked]:bg-hijau-muda"
@@ -41,10 +53,15 @@ export function CheckoutForm({
                   name="drop_point_id"
                   value={dp.id}
                   form="order-form"
-                  defaultChecked={i === 0}
+                  defaultChecked={dp.id === defaultDropPointId}
                   className="mt-0.5 accent-hijau"
                 />
                 <span className="text-sm font-semibold">{dp.name}</span>
+                {preferredActive && dp.id === preferredActive && (
+                  <span className="ml-auto rounded-full bg-hijau/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-hijau">
+                    Default
+                  </span>
+                )}
               </label>
             ))}
           </div>
@@ -81,7 +98,7 @@ export function CheckoutForm({
           </div>
         </section>
 
-        {/* Voucher & notes */}
+        {/* Voucher & catatan penjual */}
         <section>
           <h2 className="text-sm font-extrabold text-tinta mb-3">
             Voucher & Catatan
@@ -99,15 +116,18 @@ export function CheckoutForm({
               />
             </div>
             <div>
-              <label className="label" htmlFor="delivery_note">
-                Instruksi pengiriman (opsional)
+              <label className="label" htmlFor="seller_note">
+                Catatan untuk penjual (opsional)
               </label>
-              <input
-                id="delivery_note"
-                name="delivery_note"
-                className="input"
-                placeholder="Tinggalkan di depan pintu…"
+              <textarea
+                id="seller_note"
+                name="seller_note"
+                rows={3}
+                maxLength={500}
+                className="input min-h-[88px] resize-y"
+                placeholder="Contoh: Tolong pilih yang matang / jangan campur barang mudah remuk…"
               />
+              <p className="mt-1 text-[11px] text-tinta/40">Maks. 500 karakter. Akan dibaca admin & picker.</p>
             </div>
           </div>
         </section>

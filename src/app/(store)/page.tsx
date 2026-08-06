@@ -1,28 +1,31 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { loadProductCards } from "@/lib/catalog";
-import { ProductCard } from "@/components/ProductCard";
-import { CategoryImage } from "@/components/CategoryImage";
+import { HomeCatalog } from "@/components/HomeCatalog";
 import { rupiah } from "@/lib/money";
 import { getSession } from "@/lib/session";
+import { cartItemCount } from "@/lib/storefront";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   const now = new Date();
-  const [banners, categories, promoCards, freshCards, topPickCards, session] = await Promise.all([
+  const [banners, categories, topPickCards, promoCards, session, cartCount] = await Promise.all([
     db.banner.findMany({
       where: { is_active: true, placement: "home_top", start_at: { lte: now }, end_at: { gte: now } },
       orderBy: { sort_order: "asc" },
     }),
     db.category.findMany({ where: { is_active: true, parent_id: null }, orderBy: { sort_order: "asc" } }),
-    loadProductCards({ compare_at_price: { not: null } }, 4),
-    loadProductCards({ category: { slug: { in: ["sayur-segar", "buah"] } } }, 4),
-    loadProductCards({}, 4),
+    // Home: ambil pool ranking (24), UI tampil ringkas dulu + muat lebih banyak
+    loadProductCards({}, { take: 24, bestOffers: true }),
+    loadProductCards({ compare_at_price: { not: null } }, 8),
     getSession("user"),
+    cartItemCount(),
   ]);
 
-  const user = session ? await db.user.findUnique({ where: { id: session.sub }, select: { name: true } }) : null;
+  const user = session
+    ? await db.user.findUnique({ where: { id: session.sub }, select: { name: true } })
+    : null;
 
   const jam = new Date().getHours();
   let greeting = "Selamat malam";
@@ -35,205 +38,228 @@ export default async function HomePage() {
     orderBy: { start_at: "desc" },
   });
 
+  const openOrders = session
+    ? await db.order.count({
+        where: {
+          user_id: session.sub,
+          status: { in: ["pending_payment", "confirmed", "picking", "packed", "on_delivery", "arrived"] },
+        },
+      })
+    : 0;
+
+  const displayName = user?.name?.split(" ")[0] || "Sobat Sentra";
+  const hero = banners[0] ?? null;
+
+  const categoryProps = categories.map((c) => ({
+    id: c.id,
+    name: c.name,
+    slug: c.slug,
+    image_url: c.image_url ?? null,
+  }));
+
   return (
-    <div className="space-y-5 px-5 pt-4">
-      {/* === GREETING + SEARCH SECTION (wireframe: greeting-search-section) === */}
-      {/* wireframe: section, padding top 8, left 20, right 20 */}
-      {/* greeting-line (muted) + welcome-line (heading) + search-bar (margin-top 16, radius 16, elevation 1) */}
-      <section className="space-y-3">
-        <div className="space-y-0.5">
-          <p className="text-sm font-medium text-tinta/50">{greeting},</p>
-          <h1 className="text-2xl font-extrabold tracking-tight text-tinta">{user?.name || "Selamat Datang"}!</h1>
-        </div>
-        {/* search-bar (wireframe: radius 16, elevation 1) */}
-        <form action="/cari" className="relative">
-          <input
-            name="q"
-            placeholder="Cari sayur, susu, snack, obat…"
-            className="w-full rounded-2xl border border-black/5 bg-white px-4 py-3 pl-11 text-sm shadow-sm outline-none focus:border-hijau focus:ring-2 focus:ring-hijau/20"
-            aria-label="Cari produk"
-          />
-          <span aria-hidden className="absolute left-4 top-1/2 -translate-y-1/2 text-tinta/40">🔍</span>
-        </form>
-        {/* ETA info */}
-        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-tinta/60">
-          <span className="inline-flex items-center gap-1 rounded-full bg-kilat px-2 py-0.5 font-extrabold text-tinta">
-            ⚡ 15-30 mnt
-          </span>
-          <span>buka 24 jam</span>
-        </div>
+    <div className="pb-2">
+      <section className="relative w-full overflow-hidden bg-[#1A0505]">
+        <Link
+          href={hero?.target_url || "/kategori"}
+          className="relative block h-[250px] w-full sm:h-[280px]"
+          aria-label={hero?.title || "Promo Sentra"}
+        >
+          {hero?.image_url ? (
+            <img
+              src={hero.image_url}
+              alt={hero.title}
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+          ) : (
+            <div className="absolute inset-0 bg-gradient-to-br from-[#3D0C0C] via-[#A00000] to-[#1A0505]" />
+          )}
+
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black/45 via-black/10 to-transparent" />
+
+          {!hero?.image_url && (
+            <div className="absolute inset-x-0 bottom-0 px-5 pb-12 pt-16">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-[#FFD54A]">Promo</p>
+              <p className="mt-1 max-w-[85%] text-lg font-extrabold leading-snug text-white drop-shadow">
+                {hero?.title || "Belanja harian antar cepat"}
+              </p>
+              <span className="mt-3 inline-flex items-center rounded-full bg-white px-4 py-2 text-xs font-extrabold text-[#A00000] shadow-md">
+                Cek Sekarang →
+              </span>
+            </div>
+          )}
+
+          {banners.length > 1 && (
+            <div className="absolute bottom-10 left-1/2 flex -translate-x-1/2 gap-1.5">
+              {banners.map((_, i) => (
+                <span
+                  key={i}
+                  className={`h-1.5 rounded-full ${i === 0 ? "w-4 bg-white" : "w-1.5 bg-white/40"}`}
+                />
+              ))}
+            </div>
+          )}
+        </Link>
       </section>
 
-      {/* === PROMO BANNER (wireframe: promo-banner) === */}
-      {/* warm bg #Fdf3e7, radius=24, elevation=1 */}
-      {banners.length > 0 && (
-        <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 scrollbar-none">
-          {banners.map((b, idx) => (
-            <Link
-              key={b.id}
-              href={b.target_url}
-              className="relative min-w-[88%] snap-center overflow-hidden rounded-3xl bg-[#Fdf3e7] shadow-sm"
-              style={{ aspectRatio: b.image_url ? "16/9" : "16/9" }}
-            >
-              {b.image_url ? (
-                <img src={b.image_url} alt={b.title} className="h-full w-full object-cover" />
-              ) : (
-                <div className="flex h-full flex-col justify-center p-5">
-                  <p className="text-[11px] font-bold uppercase tracking-wider text-hijau">Promo</p>
-                  <p className="mt-1 text-lg font-extrabold leading-snug text-tinta">{b.title}</p>
-                  <span className="mt-3 inline-flex w-fit rounded-xl bg-hijau px-4 py-2 text-xs font-bold text-white shadow-md">
-                    Pesan Sekarang
-                  </span>
-                </div>
-              )}
-              {/* pagination dots (wireframe: promo-pagination-dots) */}
-              {idx === 0 && banners.length > 1 && (
-                <div className="absolute bottom-2 left-1/2 flex -translate-x-1/2 gap-1.5">
-                  {banners.map((_, i) => (
-                    <span
-                      key={i}
-                      className={`h-1.5 rounded-full transition-all ${
-                        i === 0 ? "w-4 bg-hijau" : "w-1.5 bg-hijau/25"
-                      }`}
-                    />
-                  ))}
-                </div>
-              )}
-            </Link>
-          ))}
-        </div>
-      )}
+      <div className="relative z-10 -mt-6 overflow-hidden rounded-t-[1.5rem] shadow-[0_-8px_24px_rgba(0,0,0,0.08)]">
+        <div className="space-y-4 bg-[#A00000] px-4 pt-4">
+          <section>
+            <p className="text-[12px] font-medium text-white/75">{greeting},</p>
+            <h1 className="text-[22px] font-extrabold tracking-tight text-white">{displayName}</h1>
 
-      {/* === CATEGORY FILTERS (wireframe: category-filters) === */}
-      {/* horizontal-scroll, icon 48px in rounded-16 card, active state highlighted */}
-      <section>
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-base font-extrabold text-tinta">Kategori</h2>
-          <Link href="/kategori" className="text-xs font-bold text-hijau hover:underline">
-            Lihat semua
-          </Link>
-        </div>
-        <div className="flex gap-3 overflow-x-auto scrollbar-none pb-1">
-          {categories.slice(0, 8).map((c, idx) => (
+            <form action="/cari" className="relative mt-3">
+              <input
+                name="q"
+                placeholder="Cari sayur, susu, snack, obat…"
+                className="w-full rounded-full border border-white/20 bg-white py-3 pl-11 pr-4 text-sm text-slate-800 shadow-sm outline-none ring-0 placeholder:text-slate-400 focus:border-white focus:ring-2 focus:ring-white/40"
+                aria-label="Cari produk"
+              />
+              <span aria-hidden className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="M20 20l-3-3" strokeLinecap="round" />
+                </svg>
+              </span>
+            </form>
+          </section>
+
+          {/*
+            Chip di zona merah = filter.
+            Penawaran Terbaik + Lagi Diskon di bawah ringkasan ikut filter kategori.
+          */}
+          <HomeCatalog
+            categories={categoryProps}
+            initialProducts={topPickCards}
+            initialPromoProducts={promoCards}
+          >
+            {/* Order Langsung — scan QR di gudang */}
             <Link
-              key={c.id}
-              href={`/kategori/${c.slug}`}
-              className="flex min-w-[64px] flex-col items-center gap-2"
+              href="/order-langsung"
+              className="flex items-center gap-3 overflow-hidden rounded-2xl bg-gradient-to-r from-[#1A0505] to-[#A00000] p-4 text-white shadow-md shadow-[#A00000]/25 ring-1 ring-white/10"
             >
-              {/* wireframe: icon-button size=48, radius=16, active=elevation-2 */}
-              <div
-                className={`flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl transition-all ${
-                  idx === 0
-                    ? "bg-hijau-muda shadow-md ring-2 ring-hijau"
-                    : "bg-white shadow-sm hover:shadow-md hover:ring-1 hover:ring-hijau/30"
-                }`}
-              >
-                <CategoryImage slug={c.slug} image_url={c.image_url} alt={c.name} />
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/15 text-2xl" aria-hidden>
+                📷
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-[#FFD54A]">Anda di HUB PTO Bandung</p>
+                <p className="text-base font-extrabold leading-tight">Order Langsung</p>
+                <p className="text-[11px] font-medium text-white/75">Scan QR produk → bayar → ambil</p>
               </div>
-              {/* wireframe: active-label vs muted-label */}
-              <span className={`text-[10px] font-bold ${idx === 0 ? "text-hijau-tua" : "text-tinta/60"}`}>
-                {c.name}
+              <span className="text-xl font-bold text-white/90" aria-hidden>
+                →
               </span>
             </Link>
-          ))}
+
+            {/* Ringkasan belanja */}
+            <section className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
+              <div className="flex items-start justify-between gap-3 border-b border-black/5 px-4 py-3">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                    Ringkasan belanja
+                  </p>
+                  <p className="mt-0.5 text-sm font-extrabold text-slate-900">Siap antar 15–30 mnt</p>
+                </div>
+                <span className="inline-flex items-center gap-1 rounded-full bg-[#FFD54A] px-2.5 py-1 text-[10px] font-extrabold text-[#1A0505]">
+                  ⚡ 24 jam
+                </span>
+              </div>
+              <div className="grid grid-cols-3 divide-x divide-black/5">
+                <Link href="/keranjang" className="px-3 py-3 text-center transition hover:bg-slate-50">
+                  <p className="text-lg font-extrabold tabular-nums text-[#A00000]">{cartCount}</p>
+                  <p className="text-[10px] font-semibold text-slate-500">Keranjang</p>
+                </Link>
+                <Link href="/pesanan" className="px-3 py-3 text-center transition hover:bg-slate-50">
+                  <p className="text-lg font-extrabold tabular-nums text-slate-900">{openOrders}</p>
+                  <p className="text-[10px] font-semibold text-slate-500">Aktif</p>
+                </Link>
+                <Link href="/kategori" className="px-3 py-3 text-center transition hover:bg-slate-50">
+                  <p className="text-lg font-extrabold tabular-nums text-slate-900">{categories.length}</p>
+                  <p className="text-[10px] font-semibold text-slate-500">Kategori</p>
+                </Link>
+              </div>
+              <div className="flex items-center justify-between border-t border-black/5 bg-slate-50/80 px-4 py-2.5">
+                <p className="text-[11px] font-medium text-slate-500">Drop point · tanpa ongkir</p>
+                <Link href="/kategori" className="text-[11px] font-extrabold text-[#A00000]">
+                  Belanja sekarang →
+                </Link>
+              </div>
+            </section>
+
+            {banners.length > 1 && (
+              <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 scrollbar-none">
+                {banners.slice(1).map((b) => (
+                  <Link
+                    key={b.id}
+                    href={b.target_url}
+                    className="relative min-w-[88%] snap-center overflow-hidden rounded-2xl bg-[#1A0505] shadow-sm"
+                    style={{ aspectRatio: "16/9" }}
+                  >
+                    {b.image_url ? (
+                      <img src={b.image_url} alt={b.title} className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="flex h-full flex-col justify-center bg-gradient-to-br from-[#3D0C0C] to-[#A00000] p-5">
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-[#FFD54A]">Promo</p>
+                        <p className="mt-1 text-lg font-extrabold leading-snug text-white">{b.title}</p>
+                      </div>
+                    )}
+                  </Link>
+                ))}
+              </div>
+            )}
+
+            {activeVoucher && (
+              <Link
+                href="/kategori"
+                className="flex items-center justify-between gap-3 overflow-hidden rounded-2xl bg-gradient-to-r from-[#A00000] to-[#C00000] p-4 text-white shadow-md shadow-[#A00000]/20"
+              >
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold text-white/80">Voucher spesial untukmu</p>
+                  <p className="mt-0.5 truncate text-sm font-extrabold">
+                    {activeVoucher.type === "fixed"
+                      ? `Diskon ${rupiah(activeVoucher.value)}`
+                      : activeVoucher.type === "percentage"
+                        ? `Diskon hingga ${activeVoucher.value}%`
+                        : "Gratis ongkir"}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-white/70">
+                    Kode <span className="font-bold text-[#FFD54A]">{activeVoucher.code}</span>
+                    {" · "}min. {rupiah(activeVoucher.min_order_amount)}
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full bg-white px-3 py-2 text-[11px] font-extrabold text-[#A00000]">
+                  Pakai →
+                </span>
+              </Link>
+            )}
+
+            <section>
+              <div className="grid grid-cols-5 gap-2">
+                {[
+                  { href: "/kategori", label: "Kategori", emoji: "🗂️" },
+                  { href: "/cari", label: "Cari", emoji: "🔍" },
+                  { href: "/pesanan", label: "Pesanan", emoji: "📦" },
+                  { href: session ? "/akun/profil" : "/masuk", label: "Profil", emoji: "👤" },
+                  { href: "/keranjang", label: "Keranjang", emoji: "🛒" },
+                ].map((a) => (
+                  <Link
+                    key={a.href + a.label}
+                    href={a.href}
+                    className="flex flex-col items-center gap-1.5 rounded-2xl bg-white px-1 py-3 shadow-sm ring-1 ring-black/5 transition active:scale-95"
+                  >
+                    <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#FDF0F0] text-xl">
+                      {a.emoji}
+                    </span>
+                    <span className="text-center text-[10px] font-bold leading-tight text-slate-700">
+                      {a.label}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          </HomeCatalog>
         </div>
-      </section>
-
-      {/* === DISCOUNT BANNER (wireframe: discount-banner) === */}
-      {/* bg=#FFF4E5, radius=16, elevation=1 */}
-      {activeVoucher && (
-        <Link
-          href="/kategori"
-          className="flex items-center justify-between rounded-2xl bg-[#FFF4E5] p-4 shadow-sm transition-colors hover:bg-kilat/20"
-        >
-          <div className="flex items-center gap-3">
-            {/* wireframe: discount-icon-box radius=9999 */}
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-kilat">
-              <svg className="h-5 w-5 text-tinta" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
-                <line x1="7" y1="7" x2="7.01" y2="7" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-sm font-extrabold text-tinta">Promo Spesial</p>
-              <p className="text-[11px] font-semibold text-tinta/60">
-                Kode: {activeVoucher.code}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="text-right">
-              <p className="text-sm font-extrabold text-hijau-tua">
-                {activeVoucher.type === "fixed"
-                  ? rupiah(activeVoucher.value)
-                  : activeVoucher.type === "percentage"
-                  ? `${activeVoucher.value}%`
-                  : "Gratis Ongkir"}
-              </p>
-              <p className="text-[10px] text-tinta/50">
-                Min. belanja {rupiah(activeVoucher.min_order_amount)}
-              </p>
-            </div>
-            {/* wireframe: discount-chevron icon=chevron-right size=16 */}
-            <svg className="h-4 w-4 text-tinta/40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
-          </div>
-        </Link>
-      )}
-
-      {/* === RECOMMENDATIONS (wireframe: recommendations-section) === */}
-      {/* section-title + link "See all" */}
-      {topPickCards.length > 0 && (
-        <section>
-          <div className="mb-3 flex items-end justify-between">
-            <h2 className="text-base font-extrabold text-tinta">Rekomendasi</h2>
-            <Link href="/kategori" className="text-xs font-bold text-hijau hover:underline">
-              Lihat semua
-            </Link>
-          </div>
-          {/* wireframe: rec-product-grid columns=2 gap=16 */}
-          <div className="grid grid-cols-2 gap-4">
-            {topPickCards.map((p, idx) => (
-              <ProductCard key={p.id} p={p} badge={idx === 0 ? "BEST SELLER" : undefined} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* === LAGI DISKON === */}
-      {promoCards.length > 0 && (
-        <section>
-          <div className="mb-3 flex items-end justify-between">
-            <h2 className="text-base font-extrabold text-tinta">Lagi Diskon</h2>
-            <Link href="/kategori" className="text-xs font-bold text-hijau hover:underline">
-              Lihat semua
-            </Link>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            {promoCards.map((p) => (
-              <ProductCard key={p.id} p={p} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* === SEGAR HARI INI === */}
-      {freshCards.length > 0 && (
-        <section>
-          <div className="mb-1">
-            <h2 className="text-base font-extrabold text-tinta">Segar Hari Ini</h2>
-            <p className="text-[11px] text-tinta/50">
-              Jaminan segar: tidak layak kami ganti atau refund.
-            </p>
-          </div>
-          <div className="grid grid-cols-2 gap-4 pt-2">
-            {freshCards.map((p) => (
-              <ProductCard key={p.id} p={p} />
-            ))}
-          </div>
-        </section>
-      )}
+      </div>
     </div>
   );
 }

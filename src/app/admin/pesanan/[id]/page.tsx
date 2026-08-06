@@ -48,14 +48,33 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
         </p>
       </section>
 
+      {order.delivery_note && (
+        <section className="kartu border border-amber-200 bg-amber-50 p-4 text-sm">
+          <h2 className="mb-1 text-sm font-extrabold text-amber-900">Catatan untuk penjual</h2>
+          <p className="whitespace-pre-wrap text-amber-950/90">{order.delivery_note}</p>
+        </section>
+      )}
+
       <section className="kartu divide-y divide-black/5">
+        <div className="px-3 pt-3 pb-1 text-xs font-extrabold uppercase tracking-wide text-slate-400">
+          Item pesanan
+        </div>
         {order.items.map((i) => (
-          <div key={i.id} className="flex justify-between p-3 text-sm">
-            <span>
-              {i.product_name_snapshot} × {i.qty_ordered}
-              {i.status === "oos" && <span className="ml-1 text-xs font-bold text-merah">(habis)</span>}
-            </span>
-            <span className="tabular-nums">{rupiah(i.subtotal)}</span>
+          <div key={i.id} className="flex justify-between gap-3 p-3 text-sm">
+            <div className="min-w-0">
+              <p className="font-semibold text-slate-800">{i.product_name_snapshot}</p>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Varian:{" "}
+                <span className="font-bold text-slate-700">
+                  {i.variant_name_snapshot?.trim() || "—"}
+                </span>
+                {" · "}× {i.qty_ordered}
+                {i.status === "oos" && (
+                  <span className="ml-1 font-bold text-merah">(habis)</span>
+                )}
+              </p>
+            </div>
+            <span className="shrink-0 tabular-nums font-semibold">{rupiah(i.subtotal)}</span>
           </div>
         ))}
         <div className="flex justify-between p-3 text-sm font-extrabold">

@@ -149,16 +149,35 @@ export function OrderDetailModal({ open, orderId, onClose, onChanged }: Props) {
                 </p>
               </section>
 
+              {order.delivery_note && (
+                <section className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm">
+                  <h3 className="mb-1 text-sm font-extrabold text-amber-900">Catatan untuk penjual</h3>
+                  <p className="whitespace-pre-wrap text-amber-950/90">{order.delivery_note}</p>
+                </section>
+              )}
+
               <section className="rounded-xl border border-black/5 divide-y divide-black/5 overflow-hidden">
+                <div className="bg-slate-50 px-3 py-2 text-[11px] font-extrabold uppercase tracking-wide text-slate-400">
+                  Item pesanan
+                </div>
                 {order.items.map((i) => (
-                  <div key={i.id} className="flex justify-between p-3 text-sm">
-                    <span className="text-slate-700">
-                      {i.product_name_snapshot} × {i.qty_ordered}
-                      {i.status === "oos" && (
-                        <span className="ml-1 text-xs font-bold text-merah">(habis)</span>
-                      )}
+                  <div key={i.id} className="flex justify-between gap-3 p-3 text-sm">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-slate-800">{i.product_name_snapshot}</p>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        Varian:{" "}
+                        <span className="font-bold text-slate-700">
+                          {i.variant_name_snapshot?.trim() || "—"}
+                        </span>
+                        {" · "}× {i.qty_ordered}
+                        {i.status === "oos" && (
+                          <span className="ml-1 font-bold text-merah">(habis)</span>
+                        )}
+                      </p>
+                    </div>
+                    <span className="shrink-0 tabular-nums font-semibold text-slate-700">
+                      {rupiah(i.subtotal)}
                     </span>
-                    <span className="tabular-nums font-semibold text-slate-700">{rupiah(i.subtotal)}</span>
                   </div>
                 ))}
                 <div className="flex justify-between p-3 text-sm font-extrabold text-slate-800">

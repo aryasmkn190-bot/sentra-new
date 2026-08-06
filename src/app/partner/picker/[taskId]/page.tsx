@@ -14,14 +14,25 @@ export default async function PickingDetailPage({ params }: { params: Promise<{ 
 
   const task = await db.pickingTask.findFirst({
     where: { id: taskId, picker_id: session.sub },
-    include: { order: { include: { items: { include: { product: { include: { hub_stocks: true } } } } } } },
+    include: {
+      order: {
+        include: {
+          items: {
+            include: {
+              product: true,
+              variant: { include: { hub_stocks: true } },
+            },
+          },
+        },
+      },
+    },
   });
   if (!task) notFound();
 
-  // Urut berdasar lokasi rak (FR-12.1)
+  // Urut berdasar lokasi rak (FR-12.1) — stok per VARIANT
   const items = [...task.order.items].sort((a, b) => {
-    const ra = a.product.hub_stocks.find((s) => s.hub_id === task.hub_id)?.rack_location ?? "";
-    const rb = b.product.hub_stocks.find((s) => s.hub_id === task.hub_id)?.rack_location ?? "";
+    const ra = a.variant?.hub_stocks.find((s) => s.hub_id === task.hub_id)?.rack_location ?? "";
+    const rb = b.variant?.hub_stocks.find((s) => s.hub_id === task.hub_id)?.rack_location ?? "";
     return ra.localeCompare(rb);
   });
   const allMarked = items.every((i) => i.qty_fulfilled === i.qty_ordered || i.status === "oos");
@@ -38,8 +49,14 @@ export default async function PickingDetailPage({ params }: { params: Promise<{ 
           <ItemRow
             key={i.id}
             itemId={i.id}
-            name={i.product_name_snapshot}
-            rack={i.product.hub_stocks.find((s) => s.hub_id === task.hub_id)?.rack_location ?? ""}
+            name={
+              i.variant_name_snapshot && i.variant_name_snapshot !== "Standar"
+                ? `${i.product_name_snapshot} (${i.variant_name_snapshot})`
+                : i.product_name_snapshot
+            }
+            rack={
+              i.variant?.hub_stocks.find((s) => s.hub_id === task.hub_id)?.rack_location ?? ""
+            }
             qtyOrdered={i.qty_ordered}
             qtyFulfilled={i.qty_fulfilled}
           />

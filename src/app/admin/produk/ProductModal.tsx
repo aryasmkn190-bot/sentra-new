@@ -3,18 +3,16 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import { ProductForm } from "./ProductForm";
 import { getCategories, getProduct } from "@/actions/admin";
+import type { VariantRow } from "./VariantEditor";
 
 type ProductItem = {
   id: string;
   name: string;
   category_id: string;
-  base_price: number;
-  compare_at_price: number | null;
-  unit: string;
-  description: string;
+  description: string | null;
   max_qty_per_order: number;
   status: string;
-  image_url?: string;
+  variants?: VariantRow[];
 };
 
 type CategoryOpt = { id: string; name: string };
@@ -122,9 +120,7 @@ export function ProductModal({ open, onClose, onSuccess, productId }: Props) {
             <ProductForm
               categories={categories}
               product={product}
-              inModal
               onSuccess={handleSuccess}
-              onCancel={handleClose}
             />
           )}
         </div>

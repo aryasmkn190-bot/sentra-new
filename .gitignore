@@ -9,3 +9,9 @@ backups
 package
 needmcp-*.tgz
 public/wa-qr.png
+
+# chat image uploads
+public/uploads/
+
+# hermes plans
+.hermes/

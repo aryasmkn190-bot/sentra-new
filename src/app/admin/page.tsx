@@ -79,10 +79,10 @@ export default async function AdminDashboard() {
   ];
 
   const quickActions = [
-    { href: "/admin/produk/baru", label: "Tambah Produk", sub: "Buat produk baru" },
-    { href: "/admin/voucher/baru", label: "Voucher Baru", sub: "Promo / diskon" },
-    { href: "/admin/banner/baru", label: "Banner Baru", sub: "Promosi storefront" },
-    { href: "/admin/inventori", label: "Adjust Stok", sub: "Opname / masuk barang" },
+    { href: "/admin/produk", label: "Kelola Produk", sub: "Ubah + atur stok" },
+    { href: "/admin/laporan", label: "Laporan Online", sub: "Omzet, voucher & produk" },
+    { href: "/admin/order-langsung/produk", label: "Produk Langsung", sub: "QR scan gudang" },
+    { href: "/admin/order-langsung/laporan", label: "Laporan Langsung", sub: "Omzet & produk terlaris" },
   ];
 
   return (

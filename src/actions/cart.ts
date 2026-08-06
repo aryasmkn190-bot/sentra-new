@@ -29,25 +29,38 @@ async function resolveCart() {
   return db.cart.create({ data: { session_token: token, hub_id: hub.id } });
 }
 
-/** FR-5.1 — set kuantitas (0 = hapus), hormati max_qty_per_order & stok tersedia. */
-export async function setCartQty(productId: string, qty: number) {
+/**
+ * Set qty di keranjang per VARIANT (0 = hapus).
+ * productId opsional — divalidasi lewat variant.product_id.
+ */
+export async function setCartQty(variantId: string, qty: number) {
   const cart = await resolveCart();
-  const product = await db.product.findUnique({ where: { id: productId } });
-  if (!product || product.status !== "active") return { error: "Produk tidak tersedia" };
+  const variant = await db.productVariant.findUnique({
+    where: { id: variantId },
+    include: { product: true },
+  });
+  if (!variant || !variant.is_active || variant.product.status !== "active") {
+    return { error: "Varian produk tidak tersedia" };
+  }
 
   if (qty <= 0) {
-    await db.cartItem.deleteMany({ where: { cart_id: cart.id, product_id: productId } });
+    await db.cartItem.deleteMany({ where: { cart_id: cart.id, variant_id: variantId } });
   } else {
     const stock = await db.hubStock.findUnique({
-      where: { hub_id_product_id: { hub_id: cart.hub_id, product_id: productId } },
+      where: { hub_id_variant_id: { hub_id: cart.hub_id, variant_id: variantId } },
     });
     const available = stock ? stock.stock_qty - stock.reserved_qty : 0;
-    const capped = Math.min(qty, product.max_qty_per_order, Math.max(available, 0));
+    const capped = Math.min(qty, variant.product.max_qty_per_order, Math.max(available, 0));
     if (capped <= 0) return { error: "Stok habis di hub kamu" };
     await db.cartItem.upsert({
-      where: { cart_id_product_id: { cart_id: cart.id, product_id: productId } },
+      where: { cart_id_variant_id: { cart_id: cart.id, variant_id: variantId } },
       update: { qty: capped },
-      create: { cart_id: cart.id, product_id: productId, qty: capped },
+      create: {
+        cart_id: cart.id,
+        product_id: variant.product_id,
+        variant_id: variantId,
+        qty: capped,
+      },
     });
   }
   revalidatePath("/", "layout");
