@@ -15,3 +15,13 @@ public/uploads/
 
 # hermes plans
 .hermes/
+
+# OpenNext
+.open-next
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+wrangler.jsonc
+!wrangler.jsonc.example

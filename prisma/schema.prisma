@@ -7,7 +7,8 @@
 // - Enum memakai String agar selaras dengan ERD (varchar) dan mudah dievolusi.
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
 }
 
 datasource db {

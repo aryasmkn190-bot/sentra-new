@@ -4,7 +4,7 @@ import { useState, useTransition, useMemo } from "react";
 import Link from "next/link";
 import * as XLSX from "xlsx";
 import { getOnlineOrderReport } from "@/actions/admin";
-import { STATUS_LABEL } from "@/lib/orders";
+import { STATUS_LABEL } from "@/lib/order-status";
 import { rupiah } from "@/lib/money";
 import { StatusBadge } from "@/components/StatusBadge";
 

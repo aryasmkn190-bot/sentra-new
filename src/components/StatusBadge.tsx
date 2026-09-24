@@ -1,4 +1,4 @@
-import { STATUS_LABEL } from "@/lib/orders";
+import { STATUS_LABEL } from "@/lib/order-status";
 
 const TONE: Record<string, string> = {
   pending_payment: "bg-kilat/30 text-tinta",

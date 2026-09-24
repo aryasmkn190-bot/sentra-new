@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { adminSetOrderStatus, processRefund } from "@/actions/admin";
-import { STATUS_LABEL } from "@/lib/orders";
+import { STATUS_LABEL } from "@/lib/order-status";
 
 const OPTIONS = [
   "pending_payment",

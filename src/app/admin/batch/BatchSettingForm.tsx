@@ -8,7 +8,7 @@ import {
   setActiveBatchAction,
   deleteBatchAction,
 } from "@/actions/batch";
-import { BATCH_DAY_NAMES } from "@/lib/batch";
+import { BATCH_DAY_NAMES } from "@/lib/batch-constants";
 import { rupiah } from "@/lib/money";
 
 type BatchItem = {

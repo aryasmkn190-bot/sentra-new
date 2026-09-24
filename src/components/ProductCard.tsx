@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Price } from "./Price";
 import { QtyControl } from "./QtyControl";
-import { formatSoldCount } from "@/lib/product-stats";
+import { formatSoldCount } from "@/lib/product-formatters";
 
 export type ProductCardData = {
   id: string;

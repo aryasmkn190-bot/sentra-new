@@ -1,14 +1,7 @@
 import { db } from "./db";
+import { BATCH_DAY_NAMES } from "./batch-constants";
 
-export const BATCH_DAY_NAMES = [
-  "Minggu",
-  "Senin",
-  "Selasa",
-  "Rabu",
-  "Kamis",
-  "Jumat",
-  "Sabtu",
-];
+export { BATCH_DAY_NAMES };
 
 export type BatchEvaluation = {
   isOpen: boolean;

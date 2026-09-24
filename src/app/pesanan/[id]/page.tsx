@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { getSession } from "@/lib/session";
 import { rupiah } from "@/lib/money";
-import { ORDER_FLOW, STATUS_LABEL } from "@/lib/orders";
+import { ORDER_FLOW, STATUS_LABEL } from "@/lib/order-status";
 import { expireIfOverdue } from "@/lib/payment";
 import { simulatePaymentSuccess, cancelOrder, reorder } from "@/actions/checkout";
 import { StatusBadge } from "@/components/StatusBadge";

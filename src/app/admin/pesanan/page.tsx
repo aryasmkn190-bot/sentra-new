@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getOrders, bulkUpdateOrderStatus } from "@/actions/admin";
 import { rupiah } from "@/lib/money";
-import { STATUS_LABEL } from "@/lib/orders";
+import { STATUS_LABEL } from "@/lib/order-status";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Pagination } from "@/components/Pagination";
 import { OrderDetailModal } from "./OrderDetailModal";

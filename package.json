@@ -3,40 +3,53 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
     "build": "prisma generate && next build",
+    "dev": "next dev",
     "start": "next start",
     "lint": "next lint",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
-    "db:migrate": "prisma migrate dev"
+    "db:migrate": "prisma migrate dev",
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
+    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
+    "@opennextjs/cloudflare": "^1.20.6",
+    "@prisma/adapter-neon": "^6.19.3",
+    "@prisma/adapter-pg": "^6.19.3",
     "@prisma/client": "^6.3.0",
     "bcryptjs": "^2.4.3",
     "jose": "^5.9.6",
     "jsqr": "^1.4.0",
     "next": "^15.1.6",
+    "pg": "^8.23.0",
     "qrcode": "^1.5.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "ws": "^8.21.3",
     "xlsx": "^0.18.5",
     "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.10.0",
+    "@types/pg": "^8.23.1",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/ws": "^8.18.1",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.49",
     "prisma": "^6.3.0",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "wrangler": "^4.138.0"
   }
 }

@@ -1,0 +1,48 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "main": ".open-next/worker.js",
+  "name": "sentra",
+  "compatibility_date": "2026-09-24",
+  "compatibility_flags": [
+    "nodejs_compat",
+    "global_fetch_strictly_public"
+  ],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "sentra"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "NEXT_INC_CACHE_R2_BUCKET",
+      "bucket_name": "sentra-cache"
+    },
+    {
+      "binding": "SENTRA_UPLOADS",
+      "bucket_name": "sentra-uploads"
+    }
+  ],
+  "vars": {
+    "DATABASE_URL": "postgresql://[USER]:[PASSWORD]@[HOST]-pooler.[REGION].aws.neon.tech/sentra?sslmode=require&schema=sentra",
+    "SESSION_SECRET": "",
+    "OTP_MODE": "whatsapp",
+    "PAYMENT_MODE": "pakasir",
+    "MIDTRANS_SERVER_KEY": "",
+    "MIDTRANS_CLIENT_KEY": "",
+    "PORT": "3007",
+    "NEXT_PUBLIC_APP_URL": "https://web.locusgroup.site",
+    "EVOLUTION_API_URL": "https://wa.bergerak.space",
+    "EVOLUTION_API_KEY": "",
+    "EVOLUTION_INSTANCE": "kilatmart",
+    "PAKASIR_SLUG": "sentra",
+    "PAKASIR_API_KEY": "",
+    "OPENWA_API_URL": "https://wa.bergerak.space",
+    "OPENWA_API_KEY": "",
+    "OPENWA_SESSION": "010e519c-e841-45cc-8007-4c31ba9c964b"
+  }
+}

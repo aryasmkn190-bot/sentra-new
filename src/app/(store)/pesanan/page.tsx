@@ -9,7 +9,7 @@ import {
   isOrderListTabKey,
   statusesForOrderTab,
   type OrderListTabKey,
-} from "@/lib/orders";
+} from "@/lib/order-status";
 
 export const metadata = { title: "Pesanan Saya" };
 
