@@ -173,9 +173,6 @@ export default async function HomePage() {
               </span>
             </Link>
 
-            {/* Paket Bundling / Hemat */}
-            <BundleSection bundles={bundles} />
-
             {/* Ringkasan belanja */}
             <section className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-black/5">
               <div className="flex items-start justify-between gap-3 border-b border-black/5 px-4 py-3">
@@ -284,6 +281,9 @@ export default async function HomePage() {
                 ))}
               </div>
             </section>
+
+            {/* Paket Bundling / Hemat */}
+            <BundleSection bundles={bundles} />
           </HomeCatalog>
         </div>
       </div>

@@ -39,12 +39,22 @@ type OrderItem = {
   order_number: string;
   status: string;
   total_amount: number;
+  batch_id?: string | null;
+  batch_name?: string | null;
   created_at: Date | string;
   user: { phone_number: string; name: string | null };
   hub: { code: string; name: string };
+  dropPoint?: { name: string } | null;
 };
 
-type DataState = { items: OrderItem[]; totalItems: number; currentPage: number } | null;
+type BatchOption = { id: string; name: string; is_active: boolean };
+
+type DataState = {
+  items: OrderItem[];
+  totalItems: number;
+  currentPage: number;
+  batches?: BatchOption[];
+} | null;
 
 export default function AdminOrdersPage() {
   const router = useRouter();
@@ -61,14 +71,20 @@ export default function AdminOrdersPage() {
   const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
   const query = searchParams.get("q") || "";
   const statusFilter = searchParams.get("status") || "all";
+  const batchFilter = searchParams.get("batch") || "all";
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const result = await getOrders(page, query || undefined, statusFilter || undefined);
+    const result = await getOrders(
+      page,
+      query || undefined,
+      statusFilter || undefined,
+      batchFilter || undefined
+    );
     setData(result as DataState);
     setSelected(new Set());
     setLoading(false);
-  }, [page, query, statusFilter]);
+  }, [page, query, statusFilter, batchFilter]);
 
   useEffect(() => {
     fetchData();
@@ -81,12 +97,22 @@ export default function AdminOrdersPage() {
     const params = new URLSearchParams();
     if (q) params.set("q", q);
     if (statusFilter !== "all") params.set("status", statusFilter);
+    if (batchFilter !== "all") params.set("batch", batchFilter);
     router.push(`/admin/pesanan?${params.toString()}`);
   };
 
   const handleFilter = (s: string) => {
     const params = new URLSearchParams();
     if (s !== "all") params.set("status", s);
+    if (batchFilter !== "all") params.set("batch", batchFilter);
+    if (query) params.set("q", query);
+    router.push(`/admin/pesanan?${params.toString()}`);
+  };
+
+  const handleBatchFilter = (b: string) => {
+    const params = new URLSearchParams();
+    if (b !== "all") params.set("batch", b);
+    if (statusFilter !== "all") params.set("status", statusFilter);
     if (query) params.set("q", query);
     router.push(`/admin/pesanan?${params.toString()}`);
   };
@@ -94,6 +120,7 @@ export default function AdminOrdersPage() {
   const items = data?.items ?? [];
   const totalItems = data?.totalItems ?? 0;
   const currentPage = data?.currentPage ?? page;
+  const batches = data?.batches ?? [];
 
   const allChecked = items.length > 0 && items.every((o) => selected.has(o.id));
   const someChecked = items.some((o) => selected.has(o.id));
@@ -136,18 +163,57 @@ export default function AdminOrdersPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-extrabold text-slate-800">Pesanan</h1>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+        <h1 className="text-xl font-extrabold text-slate-800">Pesanan</h1>
+        {batchFilter !== "all" && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500">Filter Aktif:</span>
+            <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-100 px-2.5 py-1 text-xs font-extrabold text-emerald-800">
+              {batchFilter === "none" ? "Tanpa Batch" : batchFilter}
+              <button
+                type="button"
+                onClick={() => handleBatchFilter("all")}
+                className="hover:text-emerald-950 font-black ml-1"
+                title="Hapus filter batch"
+              >
+                ✕
+              </button>
+            </span>
+          </div>
+        )}
+      </div>
 
       <div className="flex flex-col gap-3">
-        <form onSubmit={handleSearch} className="relative flex-1">
-          <svg className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></svg>
-          <input
-            name="q"
-            defaultValue={query}
-            placeholder="Cari no. order, nama, atau nomor HP..."
-            className="w-full rounded-xl border border-black/10 bg-white py-2 pl-9 pr-4 text-xs font-bold text-slate-700 placeholder:text-slate-400 focus:border-hijau focus:ring-2 focus:ring-hijau/20 focus:outline-none"
-          />
-        </form>
+        <div className="flex flex-col md:flex-row gap-2">
+          <form onSubmit={handleSearch} className="relative flex-1">
+            <svg className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></svg>
+            <input
+              name="q"
+              defaultValue={query}
+              placeholder="Cari no. order, nama, atau nomor HP..."
+              className="w-full rounded-xl border border-black/10 bg-white py-2 pl-9 pr-4 text-xs font-bold text-slate-700 placeholder:text-slate-400 focus:border-hijau focus:ring-2 focus:ring-hijau/20 focus:outline-none"
+            />
+          </form>
+
+          {/* Batch Filter Dropdown */}
+          <div className="flex items-center gap-2 shrink-0">
+            <label className="text-xs font-bold text-slate-500 shrink-0">Batch:</label>
+            <select
+              value={batchFilter}
+              onChange={(e) => handleBatchFilter(e.target.value)}
+              className="rounded-xl border border-black/10 bg-white px-3 py-2 text-xs font-bold text-slate-700 focus:border-hijau focus:outline-none"
+            >
+              <option value="all">Semua Batch</option>
+              {batches.map((b) => (
+                <option key={b.id} value={b.name}>
+                  {b.name} {b.is_active ? "🟢 (Aktif)" : ""}
+                </option>
+              ))}
+              <option value="none">Tanpa Batch</option>
+            </select>
+          </div>
+        </div>
+
         <div className="flex flex-wrap gap-1 rounded-xl border border-black/10 bg-white p-0.5">
           {STATUS_FILTERS.map((s) => (
             <button
@@ -157,7 +223,7 @@ export default function AdminOrdersPage() {
                 statusFilter === s ? "bg-hijau text-white" : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
               }`}
             >
-              {s === "all" ? "Semua" : STATUS_LABEL[s] ?? s}
+              {s === "all" ? "Semua Status" : STATUS_LABEL[s] ?? s}
             </button>
           ))}
         </div>
@@ -198,7 +264,7 @@ export default function AdminOrdersPage() {
 
       <div className="kartu !shadow-none border border-black/5 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-xs min-w-[800px]">
+          <table className="w-full text-xs min-w-[850px]">
             <thead className="bg-slate-50 border-b border-black/5 text-left font-bold text-slate-500">
               <tr>
                 <th className="p-4 w-10">
@@ -214,9 +280,10 @@ export default function AdminOrdersPage() {
                   />
                 </th>
                 <th className="p-4">No. Order</th>
+                <th className="p-4">Batch</th>
                 <th className="p-4">Waktu</th>
                 <th className="p-4">Pelanggan</th>
-                <th className="p-4">Hub</th>
+                <th className="p-4">Drop Point</th>
                 <th className="p-4 text-right">Total</th>
                 <th className="p-4">Status</th>
                 <th className="p-4"></th>
@@ -226,7 +293,7 @@ export default function AdminOrdersPage() {
               {loading ? (
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i}>
-                    {Array.from({ length: 8 }).map((_, j) => (
+                    {Array.from({ length: 9 }).map((_, j) => (
                       <td key={j} className="p-4">
                         <div className="h-4 w-16 animate-pulse rounded bg-slate-100" />
                       </td>
@@ -235,7 +302,7 @@ export default function AdminOrdersPage() {
                 ))
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-6 text-center text-slate-400">
+                  <td colSpan={9} className="p-6 text-center text-slate-400">
                     Tidak ada pesanan yang cocok.
                   </td>
                 </tr>
@@ -251,13 +318,24 @@ export default function AdminOrdersPage() {
                         aria-label={`Pilih ${o.order_number}`}
                       />
                     </td>
-                    <td className="p-4 font-mono text-slate-500">{o.order_number}</td>
+                    <td className="p-4 font-mono font-bold text-slate-700">{o.order_number}</td>
+                    <td className="p-4">
+                      {o.batch_name ? (
+                        <span className="inline-flex items-center rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-extrabold text-emerald-800 border border-emerald-200">
+                          {o.batch_name}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-slate-400 italic">—</span>
+                      )}
+                    </td>
                     <td className="p-4 text-slate-500">{fmtTime(o.created_at)}</td>
                     <td className="p-4">
                       <p className="font-semibold text-slate-800">{o.user.name || "(tanpa nama)"}</p>
                       <p className="font-mono text-[10px] text-slate-500">{o.user.phone_number}</p>
                     </td>
-                    <td className="p-4 font-mono text-slate-500">{o.hub.code}</td>
+                    <td className="p-4 text-slate-600 font-medium">
+                      {o.dropPoint?.name || o.hub.name || "—"}
+                    </td>
                     <td className="p-4 text-right font-semibold tabular-nums text-slate-700">
                       {rupiah(o.total_amount)}
                     </td>

@@ -9,16 +9,31 @@ import {
   categoryLabel,
   type ChatCategoryCode,
 } from "@/lib/chat";
-import { purgeChatImages, saveChatImage } from "@/lib/chat-upload";
+import { purgeChatImages, saveChatImage, tryDeleteChatImage } from "@/lib/chat-upload";
 
 const PAGE_SIZE = 50;
 
 /**
  * Hapus permanen seluruh riwayat chat + file gambar di disk.
  * Dipakai saat akhiri sesi (user/admin) dan sebelum mulai sesi baru.
- * Urutan: (1) hapus semua ChatMessage, (2) hapus folder upload thread.
+ * Urutan: (1) hapus file gambar individu (jika ada), (2) hapus riwayat DB,
+ * (3) hapus folder upload thread dari disk, (4) pass kedua DB & disk untuk race condition.
  */
 async function wipeChatHistory(threadId: string) {
+  try {
+    const msgsWithImages = await db.chatMessage.findMany({
+      where: { thread_id: threadId, image_url: { not: null } },
+      select: { image_url: true },
+    });
+    for (const m of msgsWithImages) {
+      if (m.image_url) {
+        await tryDeleteChatImage(m.image_url);
+      }
+    }
+  } catch {
+    /* lanjutkan pembersihan folder jika query gagal */
+  }
+
   // 1) Hapus riwayat di DB dulu (termasuk image_url di row pesan)
   const deleted = await db.chatMessage.deleteMany({ where: { thread_id: threadId } });
   // 2) Hapus folder file di filesystem (double-pass di dalam helper)

@@ -10,56 +10,73 @@ type NavSection = { label: string; items: NavItem[] };
 export function Sidebar({
   navSections,
   logoutAction,
+  isOpen: controlledIsOpen,
+  setIsOpen: controlledSetIsOpen,
 }: {
   navSections: NavSection[];
   logoutAction: () => void;
+  isOpen?: boolean;
+  setIsOpen?: (open: boolean) => void;
 }) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [internalIsOpen, setInternalIsOpen] = useState(false);
+  const isOpen = controlledIsOpen !== undefined ? controlledIsOpen : internalIsOpen;
+  const setIsOpen = controlledSetIsOpen !== undefined ? controlledSetIsOpen : setInternalIsOpen;
   const pathname = usePathname();
 
   return (
     <>
-      {/* Mobile Topbar */}
-      <header className="flex h-14 items-center justify-between border-b border-black/5 bg-slate-900 px-4 text-white md:hidden sticky top-0 z-30">
-        <div className="flex items-center gap-2">
-          <img src="/logo.png" alt="Sentra Logo" className="h-6 w-6 rounded object-contain bg-white/20 p-0.5" />
-          <p className="text-sm font-extrabold text-white">Sentra <span className="text-[10px] font-semibold text-emerald-400">Backoffice</span></p>
-        </div>
-        <button
-          onClick={() => setIsOpen(!isOpen)}
-          className="rounded-lg p-1.5 hover:bg-white/10 focus:outline-none"
-          aria-label="Toggle Sidebar"
-        >
-          <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            {isOpen ? (
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            ) : (
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-            )}
-          </svg>
-        </button>
-      </header>
+      {/* Mobile Topbar hanya jika tidak dikontrol oleh AdminShell */}
+      {controlledIsOpen === undefined && (
+        <header className="flex h-14 items-center justify-between border-b border-black/5 bg-slate-900 px-4 text-white md:hidden sticky top-0 z-30">
+          <div className="flex items-center gap-2">
+            <img src="/logo.png" alt="Sentra Logo" className="h-6 w-6 rounded object-contain bg-white/20 p-0.5" />
+            <p className="text-sm font-extrabold text-white">Sentra <span className="text-[10px] font-semibold text-emerald-400">Backoffice</span></p>
+          </div>
+          <button
+            onClick={() => setIsOpen(!isOpen)}
+            className="rounded-lg p-1.5 hover:bg-white/10 focus:outline-none"
+            aria-label="Toggle Sidebar"
+          >
+            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              {isOpen ? (
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+              )}
+            </svg>
+          </button>
+        </header>
+      )}
 
       {/* Backdrop for mobile */}
       {isOpen && (
         <div
           onClick={() => setIsOpen(false)}
-          className="fixed inset-0 z-20 bg-black/50 md:hidden"
+          className="fixed inset-0 z-30 bg-black/50 md:hidden"
         />
       )}
 
       {/* Sidebar Container */}
       <aside
-        className={`fixed bottom-0 top-14 left-0 z-20 flex w-52 shrink-0 flex-col bg-slate-900 p-4 text-slate-300 transition-transform duration-300 ease-in-out md:sticky md:top-0 md:h-dvh md:translate-x-0 ${
+        className={`fixed bottom-0 top-0 left-0 z-40 flex w-56 shrink-0 flex-col bg-slate-900 p-4 text-slate-300 transition-transform duration-300 ease-in-out md:sticky md:top-0 md:h-dvh md:translate-x-0 ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        {/* Logo (Desktop only) */}
-        <div className="mb-6 hidden md:flex items-center gap-2 px-2">
-          <img src="/logo.png" alt="Sentra Logo" className="h-6 w-6 rounded object-contain bg-white/20 p-0.5" />
-          <p className="text-lg font-extrabold text-white">
-            Sentra <span className="text-xs font-semibold text-emerald-400">Backoffice</span>
-          </p>
+        {/* Logo */}
+        <div className="mb-6 flex items-center justify-between px-2">
+          <div className="flex items-center gap-2">
+            <img src="/logo.png" alt="Sentra Logo" className="h-6 w-6 rounded object-contain bg-white/20 p-0.5" />
+            <p className="text-base font-extrabold text-white">
+              Sentra <span className="text-xs font-semibold text-emerald-400">Backoffice</span>
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsOpen(false)}
+            className="md:hidden text-slate-400 hover:text-white p-1"
+          >
+            ✕
+          </button>
         </div>
 
         {/* Nav Links - Grouped by Section */}

@@ -9,6 +9,7 @@ import {
   sendAdminChatMessage,
   type ChatMsg,
 } from "@/actions/chat";
+import { MAX_CHAT_IMAGE_BYTES, MAX_CHAT_IMAGE_MB } from "@/lib/chat";
 
 type ThreadRow = {
   id: string;
@@ -252,8 +253,8 @@ export default function AdminChatPage() {
       clearImage();
       return;
     }
-    if (file.size > 2 * 1024 * 1024) {
-      setErr("Gambar maksimal 2 MB");
+    if (file.size > MAX_CHAT_IMAGE_BYTES) {
+      setErr(`Gambar maksimal ${MAX_CHAT_IMAGE_MB} MB`);
       return;
     }
     if (!file.type.startsWith("image/")) {
@@ -521,7 +522,7 @@ export default function AdminChatPage() {
                     onClick={() => fileRef.current?.click()}
                     className="shrink-0 rounded-xl border border-black/10 px-2.5 text-slate-600 hover:bg-slate-50"
                     aria-label="Lampirkan gambar"
-                    title="Lampirkan gambar (maks 2 MB)"
+                    title="Lampirkan gambar (maks 10 MB)"
                   >
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <rect x="3" y="3" width="18" height="18" rx="2" />

@@ -35,9 +35,17 @@ export default async function AdminOrderDetailPage({ params }: { params: Promise
       <section className="kartu p-4 text-sm">
         <h2 className="mb-2 text-sm font-extrabold">Pelanggan & pengiriman</h2>
         <p className="font-semibold">{order.user.name || "Pelanggan"} ({order.user.phone_number})</p>
-        {order.drop_point_id ? (
-          <p className="text-xs text-tinta/60">Drop Point: {order.dropPoint?.name || "Drop Point"}</p>
-        ) : (
+        <div className="mt-1 flex items-center gap-2 flex-wrap text-xs">
+          <span className="rounded bg-emerald-50 px-2 py-0.5 font-bold text-emerald-800 border border-emerald-200">
+            Batch: {order.batch_name || "Tanpa Batch"}
+          </span>
+          {order.drop_point_id && (
+            <span className="rounded bg-slate-100 px-2 py-0.5 font-bold text-slate-700">
+              Drop Point: {order.dropPoint?.name || "Drop Point"}
+            </span>
+          )}
+        </div>
+        {!order.drop_point_id && (
           <>
             <p className="text-xs">{addr.recipient_name} · {addr.recipient_phone}</p>
             <p className="text-xs text-tinta/60">{addr.full_address}</p>

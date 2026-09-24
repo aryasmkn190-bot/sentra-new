@@ -4,7 +4,7 @@ const nextConfig = {
   experimental: {
     // Chat image upload via server action FormData
     serverActions: {
-      bodySizeLimit: "4mb",
+      bodySizeLimit: "15mb",
     },
   },
 };

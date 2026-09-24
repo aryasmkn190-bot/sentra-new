@@ -133,15 +133,23 @@ export function OrderDetailModal({ open, orderId, onClose, onChanged }: Props) {
                 <p className="font-semibold text-slate-800">
                   {order.user.name || "Pelanggan"} ({order.user.phone_number})
                 </p>
-                {order.drop_point_id ? (
-                  <p className="text-xs text-slate-500">Drop Point: {order.dropPoint?.name || "Drop Point"}</p>
-                ) : (
-                  <>
+                <div className="mt-1 flex items-center gap-2 flex-wrap text-xs">
+                  <span className="rounded bg-emerald-50 px-2 py-0.5 font-bold text-emerald-800 border border-emerald-200">
+                    Batch: {order.batch?.name || order.batch_name || "Tanpa Batch"}
+                  </span>
+                  {order.drop_point_id && (
+                    <span className="rounded bg-slate-100 px-2 py-0.5 font-bold text-slate-700">
+                      Drop Point: {order.dropPoint?.name || "Drop Point"}
+                    </span>
+                  )}
+                </div>
+                {!order.drop_point_id && (
+                  <div className="mt-1.5">
                     <p className="text-xs text-slate-600">
                       {addr.recipient_name} · {addr.recipient_phone}
                     </p>
                     <p className="text-xs text-slate-500">{addr.full_address}</p>
-                  </>
+                  </div>
                 )}
                 <p className="mt-1.5 border-t border-black/5 pt-1.5 text-xs text-slate-500">
                   Hub: {order.hub?.code ?? "—"} · Picker: {order.picking_task?.picker?.name ?? "—"} · Driver:{" "}

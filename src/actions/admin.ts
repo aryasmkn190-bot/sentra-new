@@ -271,7 +271,21 @@ const ORDER_STATUSES = [
   "refunded",
 ] as const;
 
-export async function getOrders(page?: number, q?: string, status?: string) {
+export async function getBatchesList() {
+  const admin = await requireAdmin();
+  if (!admin) return [];
+  return db.purchaseBatch.findMany({
+    orderBy: { created_at: "desc" },
+    select: { id: true, name: true, is_active: true },
+  });
+}
+
+export async function getOrders(
+  page?: number,
+  q?: string,
+  status?: string,
+  batchFilter?: string
+) {
   const admin = await requireAdmin();
   if (!admin) return null;
 
@@ -279,20 +293,43 @@ export async function getOrders(page?: number, q?: string, status?: string) {
   const currentPage = Math.max(1, page || 1);
   const query = (q || "").trim();
   const statusFilter = status || "all";
+  const batch = (batchFilter || "all").trim();
 
-  const where: any = {};
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const andConditions: any[] = [];
+
   if (query) {
-    where.OR = [
-      { order_number: { contains: query, mode: "insensitive" } },
-      { user: { phone_number: { contains: query } } },
-      { user: { name: { contains: query, mode: "insensitive" } } },
-    ];
-  }
-  if (statusFilter !== "all" && ORDER_STATUSES.includes(statusFilter as any)) {
-    where.status = statusFilter;
+    andConditions.push({
+      OR: [
+        { order_number: { contains: query, mode: "insensitive" } },
+        { user: { phone_number: { contains: query } } },
+        { user: { name: { contains: query, mode: "insensitive" } } },
+      ],
+    });
   }
 
-  const [items, totalItems] = await Promise.all([
+  if (statusFilter !== "all" && ORDER_STATUSES.includes(statusFilter as any)) {
+    andConditions.push({ status: statusFilter });
+  }
+
+  if (batch !== "all") {
+    if (batch === "none") {
+      andConditions.push({
+        OR: [{ batch_id: null }, { batch_name: null }],
+      });
+    } else {
+      andConditions.push({
+        OR: [
+          { batch_id: batch },
+          { batch_name: batch },
+        ],
+      });
+    }
+  }
+
+  const where = andConditions.length > 0 ? { AND: andConditions } : {};
+
+  const [items, totalItems, batches] = await Promise.all([
     db.order.findMany({
       where,
       orderBy: { created_at: "desc" },
@@ -303,25 +340,58 @@ export async function getOrders(page?: number, q?: string, status?: string) {
         order_number: true,
         status: true,
         total_amount: true,
+        batch_id: true,
+        batch_name: true,
         created_at: true,
         user: { select: { phone_number: true, name: true } },
         hub: { select: { code: true, name: true } },
+        dropPoint: { select: { name: true } },
       },
     }),
     db.order.count({ where }),
+    db.purchaseBatch.findMany({
+      orderBy: { created_at: "desc" },
+      select: { id: true, name: true, is_active: true },
+    }),
   ]);
 
-  return { items, totalItems, currentPage };
+  return { items, totalItems, currentPage, batches };
 }
 
-/** Laporan khusus Pesanan Online Storefront — rekap omzet, voucher, shipping, & top produk */
+export type OnlineReportFilter = {
+  period?: "today" | "7d" | "30d" | "this_month" | "all" | "custom";
+  startDateStr?: string;
+  endDateStr?: string;
+  batchId?: string;
+  statusFilter?: string;
+};
+
+/** Laporan Komprehensif Pesanan Online Storefront */
 export async function getOnlineOrderReport(
-  period: "today" | "7d" | "30d" | "all" | "custom" = "30d",
-  startDateStr?: string,
-  endDateStr?: string
+  periodOrFilter: "today" | "7d" | "30d" | "this_month" | "all" | "custom" | OnlineReportFilter = "30d",
+  startDateStrParam?: string,
+  endDateStrParam?: string,
+  batchIdParam?: string,
+  statusFilterParam?: string
 ) {
   const admin = await requireAdmin();
   if (!admin) return null;
+
+  let period = "30d";
+  let startDateStr = startDateStrParam;
+  let endDateStr = endDateStrParam;
+  let batchId = batchIdParam || "all";
+  let statusFilter = statusFilterParam || "all";
+
+  if (typeof periodOrFilter === "object" && periodOrFilter !== null) {
+    period = periodOrFilter.period || "30d";
+    startDateStr = periodOrFilter.startDateStr;
+    endDateStr = periodOrFilter.endDateStr;
+    batchId = periodOrFilter.batchId || "all";
+    statusFilter = periodOrFilter.statusFilter || "all";
+  } else if (typeof periodOrFilter === "string") {
+    period = periodOrFilter;
+  }
 
   let gte: Date | undefined;
   let lte: Date | undefined;
@@ -333,6 +403,8 @@ export async function getOnlineOrderReport(
     gte = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
   } else if (period === "30d") {
     gte = new Date(now.getTime() - 30 * 24 * 3600 * 1000);
+  } else if (period === "this_month") {
+    gte = new Date(now.getFullYear(), now.getMonth(), 1);
   } else if (period === "custom") {
     if (startDateStr) {
       gte = new Date(startDateStr);
@@ -345,57 +417,82 @@ export async function getOnlineOrderReport(
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const createdFilter: any = {};
-  if (gte) createdFilter.gte = gte;
-  if (lte) createdFilter.lte = lte;
+  const andConditions: any[] = [];
 
-  const whereDate = (gte || lte) ? { created_at: createdFilter } : {};
+  if (gte || lte) {
+    const dateCond: any = {};
+    if (gte) dateCond.gte = gte;
+    if (lte) dateCond.lte = lte;
+    andConditions.push({ created_at: dateCond });
+  }
 
-  const [totalOrders, completedAgg, statusCounts, topProductsRaw, recentOrders] = await Promise.all([
-    db.order.count({ where: whereDate }),
-    db.order.aggregate({
-      where: { ...whereDate, status: "completed" },
-      _sum: {
-        total_amount: true,
-        subtotal_amount: true,
-        discount_amount: true,
-        delivery_fee: true,
-      },
-      _count: { _all: true },
-    }),
-    db.order.groupBy({
-      by: ["status"],
-      where: whereDate,
-      _count: { _all: true },
-    }),
-    db.orderItem.groupBy({
-      by: ["product_id", "product_name_snapshot"],
-      where: {
-        order: { ...whereDate, status: "completed" },
-        status: { in: ["fulfilled", "substituted"] },
-      },
-      _sum: { qty_fulfilled: true, qty_ordered: true, subtotal: true },
-      _count: { _all: true },
-      orderBy: { _sum: { subtotal: "desc" } },
-      take: 10,
-    }),
+  if (batchId && batchId !== "all") {
+    if (batchId === "none") {
+      andConditions.push({
+        OR: [{ batch_id: null }, { batch_name: null }],
+      });
+    } else {
+      andConditions.push({
+        OR: [{ batch_id: batchId }, { batch_name: batchId }],
+      });
+    }
+  }
+
+  if (statusFilter && statusFilter !== "all") {
+    if (statusFilter === "processing") {
+      andConditions.push({
+        status: { in: ["confirmed", "picking", "packed", "on_delivery", "arrived"] },
+      });
+    } else if (statusFilter === "cancelled_or_refund") {
+      andConditions.push({
+        status: { in: ["cancelled", "refunded"] },
+      });
+    } else {
+      andConditions.push({ status: statusFilter });
+    }
+  }
+
+  const where = andConditions.length > 0 ? { AND: andConditions } : {};
+
+  // Ambil seluruh data pesanan terfilter + daftar seluruh batch untuk komparasi & dropdown
+  const [orders, allBatches] = await Promise.all([
     db.order.findMany({
-      where: whereDate,
+      where,
       include: {
-        user: { select: { name: true, phone_number: true } },
-        items: { take: 2 },
+        user: { select: { id: true, name: true, phone_number: true, email: true } },
+        hub: { select: { code: true, name: true } },
+        dropPoint: { select: { id: true, name: true } },
+        batch: { select: { id: true, name: true, is_active: true } },
+        items: {
+          include: {
+            product: {
+              select: {
+                id: true,
+                sku: true,
+                name: true,
+                category: { select: { name: true } },
+              },
+            },
+          },
+        },
       },
       orderBy: { created_at: "desc" },
-      take: 15,
+    }),
+    db.purchaseBatch.findMany({
+      orderBy: { created_at: "desc" },
+      select: {
+        id: true,
+        name: true,
+        is_active: true,
+        open_day: true,
+        open_time: true,
+        close_day: true,
+        close_time: true,
+      },
     }),
   ]);
 
-  const totalOmzet = completedAgg._sum.total_amount || 0;
-  const totalSubtotal = completedAgg._sum.subtotal_amount || 0;
-  const totalDiscount = completedAgg._sum.discount_amount || 0;
-  const totalDeliveryFee = completedAgg._sum.delivery_fee || 0;
-  const completedCount = completedAgg._count._all || 0;
-
+  // Status counts
   const counts: Record<string, number> = {
     pending_payment: 0,
     confirmed: 0,
@@ -407,43 +504,243 @@ export async function getOnlineOrderReport(
     cancelled: 0,
     refunded: 0,
   };
-  statusCounts.forEach((s) => {
-    counts[s.status] = s._count._all;
+
+  let totalOmzet = 0;
+  let totalSubtotal = 0;
+  let totalDiscount = 0;
+  let totalDeliveryFee = 0;
+  let completedCount = 0;
+  let totalItemsSold = 0;
+
+  // Agregasi Penjualan Per Produk
+  const productMap = new Map<
+    string,
+    {
+      productId: string;
+      sku: string;
+      name: string;
+      category: string;
+      totalQty: number;
+      totalRevenue: number;
+      orderCount: number;
+    }
+  >();
+
+  // Agregasi Penjualan Per Customer
+  const customerMap = new Map<
+    string,
+    {
+      userId: string;
+      name: string;
+      phone: string;
+      email: string;
+      dropPoint: string;
+      totalOrders: number;
+      completedOrders: number;
+      totalSpend: number;
+      lastOrderDate: string;
+    }
+  >();
+
+  orders.forEach((o) => {
+    if (counts[o.status] !== undefined) {
+      counts[o.status] += 1;
+    }
+
+    const isCompleted = o.status === "completed";
+    if (isCompleted) {
+      completedCount += 1;
+      totalOmzet += o.total_amount;
+      totalSubtotal += o.subtotal_amount;
+      totalDiscount += o.discount_amount;
+      totalDeliveryFee += o.delivery_fee;
+    }
+
+    // Customer aggregation
+    const userKey = o.user?.id || o.user?.phone_number || "anon";
+    const existingCust = customerMap.get(userKey);
+    const dropName = o.dropPoint?.name || o.hub?.name || "—";
+    const orderDateIso = o.created_at.toISOString();
+
+    if (!existingCust) {
+      customerMap.set(userKey, {
+        userId: o.user_id,
+        name: o.user?.name || "Tanpa Nama",
+        phone: o.user?.phone_number || "—",
+        email: o.user?.email || "—",
+        dropPoint: dropName,
+        totalOrders: 1,
+        completedOrders: isCompleted ? 1 : 0,
+        totalSpend: isCompleted ? o.total_amount : 0,
+        lastOrderDate: orderDateIso,
+      });
+    } else {
+      existingCust.totalOrders += 1;
+      if (isCompleted) {
+        existingCust.completedOrders += 1;
+        existingCust.totalSpend += o.total_amount;
+      }
+      if (new Date(orderDateIso) > new Date(existingCust.lastOrderDate)) {
+        existingCust.lastOrderDate = orderDateIso;
+        existingCust.dropPoint = dropName;
+      }
+    }
+
+    // Product aggregation (dari pesanan completed / lunas)
+    if (isCompleted) {
+      o.items.forEach((item) => {
+        const pQty = item.qty_fulfilled > 0 ? item.qty_fulfilled : item.qty_ordered;
+        totalItemsSold += pQty;
+
+        const prodKey = item.product_id || item.product_name_snapshot;
+        const existingProd = productMap.get(prodKey);
+
+        if (!existingProd) {
+          productMap.set(prodKey, {
+            productId: item.product_id || "",
+            sku: item.product?.sku || "SKU-REG",
+            name: item.product_name_snapshot,
+            category: item.product?.category?.name || "Umum",
+            totalQty: pQty,
+            totalRevenue: item.subtotal,
+            orderCount: 1,
+          });
+        } else {
+          existingProd.totalQty += pQty;
+          existingProd.totalRevenue += item.subtotal;
+          existingProd.orderCount += 1;
+        }
+      });
+    }
   });
 
-  const topProducts = topProductsRaw.map((p) => {
-    const qty = (p._sum.qty_fulfilled && p._sum.qty_fulfilled > 0) ? p._sum.qty_fulfilled : (p._sum.qty_ordered || 0);
-    return {
-      productId: p.product_id,
-      name: p.product_name_snapshot,
-      totalQty: qty,
-      totalRevenue: p._sum.subtotal || 0,
-      orderCount: p._count._all,
-    };
+  // Urutkan produk terlaris berdasarkan total omzet tertinggi
+  const productsSales = Array.from(productMap.values())
+    .map((p) => ({
+      ...p,
+      avgPrice: p.totalQty > 0 ? Math.round(p.totalRevenue / p.totalQty) : 0,
+      revenueShare: totalOmzet > 0 ? Number(((p.totalRevenue / totalOmzet) * 100).toFixed(1)) : 0,
+    }))
+    .sort((a, b) => b.totalRevenue - a.totalRevenue);
+
+  // Urutkan customer berdasarkan total belanja tertinggi
+  const customersSales = Array.from(customerMap.values())
+    .map((c) => ({
+      ...c,
+      avgOrderSpend: c.completedOrders > 0 ? Math.round(c.totalSpend / c.completedOrders) : 0,
+    }))
+    .sort((a, b) => b.totalSpend - a.totalSpend);
+
+  // Komparasi performa tiap batch
+  const batchMap = new Map<
+    string,
+    {
+      batchId: string;
+      name: string;
+      isActive: boolean;
+      totalOrders: number;
+      completedOrders: number;
+      totalOmzet: number;
+      uniqueUsers: Set<string>;
+    }
+  >();
+
+  // Inisialisasi dari allBatches
+  allBatches.forEach((b) => {
+    batchMap.set(b.name, {
+      batchId: b.id,
+      name: b.name,
+      isActive: b.is_active,
+      totalOrders: 0,
+      completedOrders: 0,
+      totalOmzet: 0,
+      uniqueUsers: new Set(),
+    });
   });
+
+  // Agregasi order ke batch
+  orders.forEach((o) => {
+    const bName = o.batch_name || o.batch?.name || "Tanpa Batch";
+    if (!batchMap.has(bName)) {
+      batchMap.set(bName, {
+        batchId: o.batch_id || "",
+        name: bName,
+        isActive: false,
+        totalOrders: 0,
+        completedOrders: 0,
+        totalOmzet: 0,
+        uniqueUsers: new Set(),
+      });
+    }
+    const bItem = batchMap.get(bName)!;
+    bItem.totalOrders += 1;
+    if (o.status === "completed") {
+      bItem.completedOrders += 1;
+      bItem.totalOmzet += o.total_amount;
+    }
+    if (o.user_id) bItem.uniqueUsers.add(o.user_id);
+  });
+
+  const batchBreakdown = Array.from(batchMap.values()).map((b) => ({
+    batchId: b.batchId,
+    name: b.name,
+    isActive: b.isActive,
+    totalOrders: b.totalOrders,
+    completedOrders: b.completedOrders,
+    totalOmzet: b.totalOmzet,
+    uniqueCustomersCount: b.uniqueUsers.size,
+    completionRate:
+      b.totalOrders > 0 ? Number(((b.completedOrders / b.totalOrders) * 100).toFixed(1)) : 0,
+    aov: b.completedOrders > 0 ? Math.round(b.totalOmzet / b.completedOrders) : 0,
+  }));
+
+  const aov = completedCount > 0 ? Math.round(totalOmzet / completedCount) : 0;
+
+  // Format ringkasan pesanan untuk tabel & excel
+  const ordersList = orders.map((o) => ({
+    id: o.id,
+    order_number: o.order_number,
+    batch_name: o.batch_name || o.batch?.name || "—",
+    created_at: o.created_at.toISOString(),
+    user_name: o.user?.name || o.user?.phone_number || "Pelanggan",
+    user_phone: o.user?.phone_number || "—",
+    drop_point: o.dropPoint?.name || o.hub?.name || "—",
+    subtotal_amount: o.subtotal_amount,
+    discount_amount: o.discount_amount,
+    delivery_fee: o.delivery_fee,
+    total_amount: o.total_amount,
+    status: o.status,
+    item_count: o.items.reduce((acc, i) => acc + (i.qty_ordered || 1), 0),
+    items_summary: o.items
+      .map((i) => `${i.product_name_snapshot} (${i.qty_ordered})`)
+      .join(", "),
+  }));
 
   return {
     period,
+    batchId,
+    statusFilter,
     summary: {
-      totalOrders,
+      totalOrders: orders.length,
       completedCount,
       totalOmzet,
       totalSubtotal,
       totalDiscount,
       totalDeliveryFee,
+      totalItemsSold,
+      aov,
       counts,
     },
-    topProducts,
-    recentOrders: recentOrders.map((o) => ({
-      id: o.id,
-      order_number: o.order_number,
-      user_name: o.user.name || o.user.phone_number,
-      user_phone: o.user.phone_number,
-      total_amount: o.total_amount,
-      status: o.status,
-      created_at: o.created_at.toISOString(),
-      item_count: o.items.length,
-      item_preview: o.items.map((i) => `${i.product_name_snapshot} (${i.qty_ordered})`).join(", "),
+    topProducts: productsSales.slice(0, 10),
+    productsSales,
+    customersSales,
+    batchBreakdown,
+    ordersList,
+    recentOrders: ordersList.slice(0, 20),
+    availableBatches: allBatches.map((b) => ({
+      id: b.id,
+      name: b.name,
+      is_active: b.is_active,
     })),
   };
 }
@@ -491,6 +788,7 @@ export async function getOrder(id: string) {
       delivery_task: { include: { driver: { select: { name: true } } } },
       dropPoint: { select: { name: true } },
       hub: { select: { code: true, name: true } },
+      batch: { select: { id: true, name: true } },
     },
   });
 }
@@ -1431,4 +1729,158 @@ export async function getBanners(page?: number, q?: string, status?: string) {
   ]);
 
   return { items, totalItems, currentPage };
+}
+
+/** Data header terpadu backoffice: profil admin, status batch aktif, dan notifikasi */
+export async function getBackofficeHeaderData() {
+  const admin = await requireAdmin();
+  if (!admin) return null;
+
+  const { getOrInitActiveBatch, evaluateBatch } = await import("@/lib/batch");
+  const activeBatch = await getOrInitActiveBatch();
+  const evaluation = evaluateBatch(activeBatch);
+
+  const [
+    pendingOrdersCount,
+    recentPendingOrders,
+    pendingDirectCount,
+    recentDirectOrders,
+    chatUnreadAgg,
+    recentChatThreads,
+  ] = await Promise.all([
+    db.order.count({ where: { status: "pending_payment" } }),
+    db.order.findMany({
+      where: { status: "pending_payment" },
+      orderBy: { created_at: "desc" },
+      take: 5,
+      select: {
+        id: true,
+        order_number: true,
+        total_amount: true,
+        created_at: true,
+        batch_name: true,
+        user: { select: { name: true, phone_number: true } },
+      },
+    }),
+    db.directOrder.count({ where: { status: "pending_payment" } }),
+    db.directOrder.findMany({
+      where: { status: "pending_payment" },
+      orderBy: { created_at: "desc" },
+      take: 5,
+      select: {
+        id: true,
+        order_number: true,
+        total_amount: true,
+        created_at: true,
+        user: { select: { name: true, phone_number: true } },
+      },
+    }),
+    db.chatThread.aggregate({
+      _sum: { unread_admin: true },
+      where: { status: "open" },
+    }),
+    db.chatThread.findMany({
+      where: { status: "open", unread_admin: { gt: 0 } },
+      orderBy: { last_message_at: "desc" },
+      take: 5,
+      include: {
+        user: { select: { id: true, name: true, phone_number: true } },
+      },
+    }),
+  ]);
+
+  const unreadChatCount = chatUnreadAgg._sum.unread_admin || 0;
+  const totalNotifications = pendingOrdersCount + pendingDirectCount + unreadChatCount;
+
+  return {
+    admin: {
+      id: admin.id,
+      name: admin.name,
+      email: admin.email,
+      role: admin.role?.name || "Admin",
+    },
+    batch: {
+      id: activeBatch.id,
+      name: activeBatch.name,
+      isOpen: evaluation.isOpen,
+      scheduleText: evaluation.scheduleText,
+    },
+    notifications: {
+      total: totalNotifications,
+      pendingOrdersCount,
+      recentPendingOrders: recentPendingOrders.map((o) => ({
+        id: o.id,
+        order_number: o.order_number,
+        total_amount: o.total_amount,
+        created_at: o.created_at.toISOString(),
+        customer_name: o.user?.name || o.user?.phone_number || "Pelanggan",
+        batch_name: o.batch_name || "Sentra",
+      })),
+      pendingDirectCount,
+      recentDirectOrders: recentDirectOrders.map((o) => ({
+        id: o.id,
+        order_number: o.order_number,
+        total_amount: o.total_amount,
+        created_at: o.created_at.toISOString(),
+        customer_name: o.user?.name || o.user?.phone_number || "Pembeli QR",
+      })),
+      unreadChatCount,
+      recentChatThreads: recentChatThreads.map((t) => ({
+        id: t.id,
+        user_name: t.user?.name || t.user?.phone_number || "Pelanggan",
+        last_preview: t.last_preview,
+        unread: t.unread_admin,
+        last_time: t.last_message_at.toISOString(),
+      })),
+    },
+  };
+}
+
+/** Update profil user admin yang sedang login */
+export async function updateAdminProfile(_prev: unknown, formData: FormData) {
+  const admin = await requireAdmin();
+  if (!admin) return { error: "Sesi berakhir. Silakan login kembali." };
+
+  const name = String(formData.get("name") || "").trim();
+  const email = String(formData.get("email") || "").toLowerCase().trim();
+  const newPassword = String(formData.get("new_password") || "").trim();
+  const confirmPassword = String(formData.get("confirm_password") || "").trim();
+
+  if (!name) return { error: "Nama lengkap wajib diisi." };
+  if (!email || !email.includes("@")) return { error: "Email tidak valid." };
+
+  // Cek duplikasi email pada admin lain
+  const existing = await db.adminUser.findFirst({
+    where: { email, id: { not: admin.id } },
+  });
+  if (existing) return { error: "Email sudah digunakan oleh akun lain." };
+
+  const updateData: { name: string; email: string; password_hash?: string } = {
+    name,
+    email,
+  };
+
+  if (newPassword) {
+    if (newPassword.length < 6) {
+      return { error: "Password baru minimal 6 karakter." };
+    }
+    if (newPassword !== confirmPassword) {
+      return { error: "Konfirmasi password baru tidak cocok." };
+    }
+    updateData.password_hash = await bcrypt.hash(newPassword, 10);
+  }
+
+  try {
+    await db.adminUser.update({
+      where: { id: admin.id },
+      data: updateData,
+    });
+    await audit(admin.id, "UPDATE_PROFILE", "AdminUser", admin.id, { name, email, passwordChanged: !!newPassword });
+  } catch (err: unknown) {
+    console.error("[updateAdminProfile]", err);
+    return { error: "Gagal memperbarui profil admin." };
+  }
+
+  revalidatePath("/admin", "layout");
+  return { ok: true as const, name, email };
 }

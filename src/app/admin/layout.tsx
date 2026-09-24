@@ -1,6 +1,6 @@
 import { getSession } from "@/lib/session";
-import { adminLogout } from "@/actions/admin";
-import { Sidebar } from "./Sidebar";
+import { adminLogout, getBackofficeHeaderData } from "@/actions/admin";
+import { AdminShell } from "./AdminShell";
 
 type NavItem = { href: string; icon: React.ReactNode; label: string; badge?: number };
 type NavSection = { label: string; items: NavItem[] };
@@ -220,10 +220,16 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     await adminLogout();
   }
 
+  const headerData = await getBackofficeHeaderData();
+  if (!headerData) return <div className="min-h-dvh bg-latar">{children}</div>;
+
   return (
-    <div className="flex min-h-dvh flex-col md:flex-row bg-latar">
-      <Sidebar navSections={navWithBadge} logoutAction={handleLogout} />
-      <main className="min-w-0 flex-1 p-6">{children}</main>
-    </div>
+    <AdminShell
+      navSections={navWithBadge}
+      headerData={headerData}
+      logoutAction={handleLogout}
+    >
+      {children}
+    </AdminShell>
   );
 }

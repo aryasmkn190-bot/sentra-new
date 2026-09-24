@@ -23,6 +23,8 @@ export default async function AdminBatchPage() {
         batch={data.batch}
         evaluation={data.evaluation}
         orderStats={data.orderStats}
+        allBatches={data.allBatches}
+        nextBatchSuggestion={data.nextBatchSuggestion}
       />
     </div>
   );

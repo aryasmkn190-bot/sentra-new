@@ -4,6 +4,7 @@ import * as path from "node:path";
 import {
   ALLOWED_CHAT_IMAGE_TYPES,
   MAX_CHAT_IMAGE_BYTES,
+  MAX_CHAT_IMAGE_MB,
 } from "@/lib/chat";
 
 const UPLOAD_ROOT = path.join(process.cwd(), "public", "uploads", "chat");
@@ -32,7 +33,7 @@ export async function saveChatImage(
     return { ok: false, error: "File gambar kosong" };
   }
   if (file.size > MAX_CHAT_IMAGE_BYTES) {
-    return { ok: false, error: "Gambar maksimal 2 MB" };
+    return { ok: false, error: `Gambar maksimal ${MAX_CHAT_IMAGE_MB} MB` };
   }
   const mime = (file.type || "").toLowerCase();
   if (!ALLOWED_CHAT_IMAGE_TYPES.includes(mime as (typeof ALLOWED_CHAT_IMAGE_TYPES)[number])) {

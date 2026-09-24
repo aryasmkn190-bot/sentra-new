@@ -52,8 +52,15 @@ export function parseHHMM(str: string): number {
 /** Ambil batch aktif (atau buat default Batch 29 jika belum ada) */
 export async function getOrInitActiveBatch() {
   let batch = await db.purchaseBatch.findFirst({
+    where: { is_active: true },
     orderBy: { created_at: "desc" },
   });
+
+  if (!batch) {
+    batch = await db.purchaseBatch.findFirst({
+      orderBy: { created_at: "desc" },
+    });
+  }
 
   if (!batch) {
     batch = await db.purchaseBatch.create({

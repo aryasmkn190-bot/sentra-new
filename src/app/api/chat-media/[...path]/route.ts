@@ -57,7 +57,7 @@ export async function GET(
     status: 200,
     headers: {
       "Content-Type": type,
-      "Cache-Control": "public, max-age=31536000, immutable",
+      "Cache-Control": "private, no-cache, no-store, must-revalidate",
       "X-Content-Type-Options": "nosniff",
     },
   });

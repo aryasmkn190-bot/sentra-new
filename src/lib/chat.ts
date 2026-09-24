@@ -15,7 +15,8 @@ export function categoryLabel(code: string) {
 }
 
 export const MAX_CHAT_BODY = 2000;
-export const MAX_CHAT_IMAGE_BYTES = 2 * 1024 * 1024; // 2 MB
+export const MAX_CHAT_IMAGE_MB = 10;
+export const MAX_CHAT_IMAGE_BYTES = MAX_CHAT_IMAGE_MB * 1024 * 1024; // 10 MB
 export const ALLOWED_CHAT_IMAGE_TYPES = [
   "image/jpeg",
   "image/png",
