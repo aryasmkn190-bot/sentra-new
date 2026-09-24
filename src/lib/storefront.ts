@@ -18,6 +18,16 @@ const cartInclude = {
     include: {
       product: { include: { images: true } },
       variant: true,
+      bundle: {
+        include: {
+          items: {
+            include: {
+              product: { include: { variants: true } },
+              variant: true,
+            },
+          },
+        },
+      },
     },
     orderBy: { created_at: "asc" as const },
   },

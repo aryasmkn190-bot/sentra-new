@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { getMyDirectOrder } from "@/actions/direct-order";
+import { getMyDirectOrder, getActiveDirectProducts } from "@/actions/direct-order";
 import { publicAppOrigin } from "@/lib/direct-order";
 import { DIRECT_STATUS_LABEL } from "@/lib/direct-status";
 import { getPaymentUrl } from "@/lib/pakasir";
 import { rupiah } from "@/lib/money";
 import { getSession } from "@/lib/session";
+import { AddDirectProductModal } from "./AddDirectProductModal";
 
 export default async function DirectOrderDonePage({
   params,
@@ -16,7 +17,10 @@ export default async function DirectOrderDonePage({
   const session = await getSession("user");
   if (!session) redirect(`/masuk?next=/order-langsung/selesai/${id}`);
 
-  const order = await getMyDirectOrder(id);
+  const [order, allProducts] = await Promise.all([
+    getMyDirectOrder(id),
+    getActiveDirectProducts(),
+  ]);
   if (!order) notFound();
 
   const payAgain =
@@ -66,9 +70,16 @@ export default async function DirectOrderDonePage({
         </div>
       </section>
 
+      {order.status === "pending_payment" && (
+        <AddDirectProductModal
+          orderId={order.id}
+          availableProducts={allProducts}
+        />
+      )}
+
       {payAgain && (
-        <a href={payAgain} className="btn-utama block w-full text-center">
-          Lanjut bayar
+        <a href={payAgain} className="btn-utama block w-full text-center shadow-lg shadow-brand/30">
+          Lanjut bayar ({rupiah(order.total_amount)})
         </a>
       )}
 

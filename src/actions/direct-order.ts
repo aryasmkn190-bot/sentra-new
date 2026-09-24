@@ -238,6 +238,25 @@ export async function cancelDirectOrderAdmin(orderId: string) {
 
 // ─── Storefront ───────────────────────────────────────────────────────
 
+export async function getActiveDirectProducts() {
+  const products = await db.directProduct.findMany({
+    where: { is_active: true },
+    orderBy: { name: "asc" },
+  });
+  return products.map((p) => ({
+    id: p.id,
+    name: p.name,
+    description: p.description,
+    price: p.price,
+    stock_qty: p.stock_qty,
+    reserved_qty: p.reserved_qty,
+    available: availableQty(p.stock_qty, p.reserved_qty),
+    image_url: p.image_url,
+    qr_token: p.qr_token,
+    category: p.category,
+  }));
+}
+
 export async function getDirectProductByToken(token: string) {
   const t = token.trim();
   if (!t) return null;
@@ -253,6 +272,7 @@ export async function getDirectProductByToken(token: string) {
     image_url: p.image_url,
     available: availableQty(p.stock_qty, p.reserved_qty),
     qr_token: p.qr_token,
+    category: p.category,
   };
 }
 
@@ -286,15 +306,57 @@ export async function resolveDirectScan(raw: string) {
 export async function placeDirectOrder(_prev: unknown, formData: FormData) {
   const session = await requireUser();
   const token = String(formData.get("token") || "").trim();
-  const qty = Math.max(1, parseInt(String(formData.get("qty") || "1"), 10) || 1);
-  if (!session) redirect(`/masuk?next=/order-langsung/p/${encodeURIComponent(token)}`);
+  const itemsJson = String(formData.get("items_json") || "").trim();
 
-  const product = await db.directProduct.findFirst({
-    where: { qr_token: token, is_active: true },
+  if (!session) {
+    const nextUrl = token ? `/order-langsung/p/${encodeURIComponent(token)}` : "/order-langsung";
+    redirect(`/masuk?next=${nextUrl}`);
+  }
+
+  // Parse items: jika ada items_json (multi-item), gunakan itu. Jika tidak, fallback ke token & qty.
+  type OrderEntry = { id: string; qty: number };
+  let entries: OrderEntry[] = [];
+
+  if (itemsJson) {
+    try {
+      const parsed = JSON.parse(itemsJson);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        entries = parsed
+          .map((i: any) => ({
+            id: String(i.id || i.productId || "").trim(),
+            qty: Math.max(1, parseInt(String(i.qty || 1), 10) || 1),
+          }))
+          .filter((i) => i.id);
+      }
+    } catch {
+      return { error: "Format data produk tidak valid." };
+    }
+  }
+
+  if (entries.length === 0 && token) {
+    const qty = Math.max(1, parseInt(String(formData.get("qty") || "1"), 10) || 1);
+    const p = await db.directProduct.findFirst({
+      where: { qr_token: token, is_active: true },
+    });
+    if (!p) return { error: "Produk tidak ditemukan." };
+    entries = [{ id: p.id, qty }];
+  }
+
+  if (entries.length === 0) {
+    return { error: "Tidak ada produk yang dipilih." };
+  }
+
+  // Ambil data produk
+  const productIds = entries.map((e) => e.id);
+  const products = await db.directProduct.findMany({
+    where: { id: { in: productIds }, is_active: true },
   });
-  if (!product) return { error: "Produk tidak ditemukan." };
-  if (qty > 99) return { error: "Qty maksimal 99." };
 
+  if (products.length !== productIds.length) {
+    return { error: "Sebagian produk tidak ditemukan atau sudah nonaktif." };
+  }
+
+  const productMap = new Map(products.map((p) => [p.id, p]));
   const expiredAt = new Date(Date.now() + 15 * 60 * 1000);
   let orderId = "";
   let orderNumber = "";
@@ -302,29 +364,39 @@ export async function placeDirectOrder(_prev: unknown, formData: FormData) {
 
   try {
     await db.$transaction(async (tx) => {
-      const ok = await reserveDirectStock(tx, product.id, qty);
-      if (!ok) throw new Error("stok");
+      // 1. Reserve stok untuk semua item
+      for (const entry of entries) {
+        const prod = productMap.get(entry.id)!;
+        const ok = await reserveDirectStock(tx, prod.id, entry.qty);
+        if (!ok) throw new Error(`stok:${prod.name}`);
+      }
 
-      const subtotal = product.price * qty;
-      total = subtotal;
       orderNumber = generateDirectOrderNumber();
+
+      // Hitung subtotal tiap item
+      const itemCreates = entries.map((entry) => {
+        const prod = productMap.get(entry.id)!;
+        const subtotal = prod.price * entry.qty;
+        total += subtotal;
+        return {
+          product_id: prod.id,
+          product_name_snapshot: prod.name,
+          price_snapshot: prod.price,
+          qty: entry.qty,
+          subtotal,
+        };
+      });
 
       const order = await tx.directOrder.create({
         data: {
           order_number: orderNumber,
           user_id: session.sub,
           status: "pending_payment",
-          subtotal_amount: subtotal,
+          subtotal_amount: total,
           total_amount: total,
           expired_at: expiredAt,
           items: {
-            create: {
-              product_id: product.id,
-              product_name_snapshot: product.name,
-              price_snapshot: product.price,
-              qty,
-              subtotal,
-            },
+            create: itemCreates,
           },
           payment: {
             create: {
@@ -340,7 +412,10 @@ export async function placeDirectOrder(_prev: unknown, formData: FormData) {
     });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "";
-    if (msg === "stok") return { error: "Stok tidak cukup." };
+    if (msg.startsWith("stok:")) {
+      const name = msg.replace("stok:", "");
+      return { error: `Stok ${name} tidak mencukupi.` };
+    }
     console.error("[placeDirectOrder]", e);
     return { error: "Gagal membuat pesanan." };
   }
@@ -348,6 +423,88 @@ export async function placeDirectOrder(_prev: unknown, formData: FormData) {
   const returnUrl = `${publicAppOrigin()}/order-langsung/selesai/${orderId}`;
   const paymentUrl = getPaymentUrl(orderNumber, total, returnUrl);
   redirect(paymentUrl);
+}
+
+/** Menambahkan produk ke pesanan langsung yang sedang pending bayar */
+export async function addItemToPendingDirectOrder(orderId: string, productId: string, qty: number) {
+  const session = await requireUser();
+  if (!session) return { error: "Sesi telah berakhir. Silakan login kembali." };
+
+  if (qty <= 0) return { error: "Jumlah produk harus minimal 1." };
+
+  const product = await db.directProduct.findFirst({
+    where: { id: productId, is_active: true },
+  });
+  if (!product) return { error: "Produk Order Langsung tidak ditemukan atau nonaktif." };
+
+  try {
+    await db.$transaction(async (tx) => {
+      const order = await tx.directOrder.findUnique({
+        where: { id: orderId, user_id: session.sub },
+        include: { items: true, payment: true },
+      });
+      if (!order) throw new Error("not_found");
+      if (order.status !== "pending_payment") throw new Error("not_pending");
+
+      const ok = await reserveDirectStock(tx, product.id, qty);
+      if (!ok) throw new Error("stok");
+
+      // Cek apakah item sudah ada di pesanan
+      const existingItem = order.items.find((i) => i.product_id === product.id);
+      if (existingItem) {
+        const newQty = existingItem.qty + qty;
+        const newSubtotal = existingItem.price_snapshot * newQty;
+        await tx.directOrderItem.update({
+          where: { id: existingItem.id },
+          data: { qty: newQty, subtotal: newSubtotal },
+        });
+      } else {
+        await tx.directOrderItem.create({
+          data: {
+            order_id: order.id,
+            product_id: product.id,
+            product_name_snapshot: product.name,
+            price_snapshot: product.price,
+            qty,
+            subtotal: product.price * qty,
+          },
+        });
+      }
+
+      const updatedItems = await tx.directOrderItem.findMany({ where: { order_id: order.id } });
+      const newTotal = updatedItems.reduce((acc, i) => acc + i.subtotal, 0);
+      const newExpiry = new Date(Date.now() + 15 * 60 * 1000);
+
+      await tx.directOrder.update({
+        where: { id: order.id },
+        data: {
+          subtotal_amount: newTotal,
+          total_amount: newTotal,
+          expired_at: newExpiry,
+        },
+      });
+
+      if (order.payment) {
+        await tx.directPayment.update({
+          where: { id: order.payment.id },
+          data: {
+            amount: newTotal,
+            expired_at: newExpiry,
+          },
+        });
+      }
+    });
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "";
+    if (msg === "not_found") return { error: "Pesanan tidak ditemukan." };
+    if (msg === "not_pending") return { error: "Pesanan ini sudah tidak berstatus menunggu bayar." };
+    if (msg === "stok") return { error: `Stok ${product.name} tidak cukup.` };
+    console.error("[addItemToPendingDirectOrder]", e);
+    return { error: "Gagal menambahkan produk ke pesanan." };
+  }
+
+  revalidatePath(`/order-langsung/selesai/${orderId}`);
+  return { ok: true as const };
 }
 
 export async function getMyDirectOrder(id: string) {

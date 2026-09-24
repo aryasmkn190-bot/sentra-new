@@ -40,6 +40,26 @@ export default async function AccountPage() {
       </div>
 
       <section>
+        <h2 className="mb-2 text-sm font-extrabold">Menu</h2>
+        <div className="space-y-2">
+          <Link href="/akun/voucher" className="kartu flex items-center justify-between p-4">
+            <div>
+              <p className="text-sm font-extrabold">🎟️ Voucher Saya</p>
+              <p className="text-xs text-tinta/60">Lihat & klaim voucher</p>
+            </div>
+            <span className="font-bold text-hijau">→</span>
+          </Link>
+          <Link href="/pesanan" className="kartu flex items-center justify-between p-4">
+            <div>
+              <p className="text-sm font-extrabold">📦 Pesanan Saya</p>
+              <p className="text-xs text-tinta/60">Lacak dan lihat riwayat pesanan</p>
+            </div>
+            <span className="font-bold text-hijau">→</span>
+          </Link>
+        </div>
+      </section>
+
+      <section>
         <h2 className="mb-2 text-sm font-extrabold">Alamat tersimpan</h2>
         {user.addresses.length === 0 ? (
           <p className="kartu p-4 text-xs text-tinta/60">Belum ada alamat. Tambahkan saat checkout.</p>

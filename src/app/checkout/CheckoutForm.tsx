@@ -1,7 +1,9 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useState } from "react";
+import Link from "next/link";
 import { placeOrder } from "@/actions/checkout";
+import { getCheckoutVouchers } from "@/actions/vouchers";
 import { rupiah } from "@/lib/money";
 
 type DropPointOpt = { id: string; name: string };
@@ -17,7 +19,21 @@ export function CheckoutForm({
 }) {
   const [orderState, orderAction, orderPending] = useActionState(placeOrder, null);
 
-  const estimatedTotal = subtotal;
+  // Voucher klaim yang valid utk keranjang ini
+  const [vouchers, setVouchers] = useState<any[] | null>(null);
+  const [selectedClaim, setSelectedClaim] = useState<any>(null);
+  const [manualCode, setManualCode] = useState("");
+
+  useEffect(() => {
+    getCheckoutVouchers(subtotal).then((res) => {
+      setVouchers(res.items ?? []);
+      setSelectedClaim(null);
+    });
+  }, [subtotal]);
+
+  const discount = selectedClaim?.discount ?? 0;
+  const total = Math.max(subtotal - discount, 0);
+
   const preferredActive =
     preferredDropPointId && dropPoints.some((dp) => dp.id === preferredDropPointId)
       ? preferredDropPointId
@@ -105,14 +121,62 @@ export function CheckoutForm({
           </h2>
           <div className={`${card} space-y-3`}>
             <div>
+              <label className="label" htmlFor="voucher_id">
+                Voucher saya (opsional)
+              </label>
+              {vouchers === null ? (
+                <div className="h-11 animate-pulse rounded-xl bg-slate-100" />
+              ) : vouchers.length === 0 ? (
+                <div className="rounded-xl bg-slate-50 p-3 text-[11px] text-tinta/60">
+                  Belum ada voucher yang bisa dipakai untuk keranjang ini.{" "}
+                  <Link href="/akun/voucher" className="font-bold text-hijau underline">
+                    Lihat voucherku
+                  </Link>
+                </div>
+              ) : (
+                <select
+                  id="voucher_id"
+                  name="voucher_id"
+                  form="order-form"
+                  className="input"
+                  value={selectedClaim?.claimId ?? ""}
+                  onChange={(e) => {
+                    const v = vouchers.find((x) => x.claimId === e.target.value) ?? null;
+                    setSelectedClaim(v);
+                    if (v) setManualCode("");
+                  }}
+                >
+                  <option value="">— Pilih voucher —</option>
+                  {vouchers.map((v) => (
+                    <option key={v.claimId} value={v.claimId}>
+                      {v.name} · potong {v.type === "free_delivery" ? "ongkir" : rupiah(v.discount)}
+                      {v.restriction ? ` · ${v.restriction}` : ""}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {selectedClaim && (
+                <p className="mt-1 rounded-xl bg-hijau-muda px-3 py-2 text-[11px] font-semibold text-hijau-tua">
+                  ✓ Voucher <span className="font-extrabold">{selectedClaim.name}</span> dipakai — potong{" "}
+                  {selectedClaim.type === "free_delivery" ? "ongkir" : rupiah(selectedClaim.discount)}
+                </p>
+              )}
+            </div>
+            <div>
               <label className="label" htmlFor="voucher_code">
-                Kode voucher (opsional)
+                atau pakai kode voucher (opsional)
               </label>
               <input
                 id="voucher_code"
                 name="voucher_code"
                 className="input uppercase"
                 placeholder="BARUKILAT"
+                value={manualCode}
+                disabled={!!selectedClaim}
+                onChange={(e) => {
+                  setManualCode(e.target.value);
+                  if (e.target.value) setSelectedClaim(null);
+                }}
               />
             </div>
             <div>
@@ -142,10 +206,16 @@ export function CheckoutForm({
               <span className="text-tinta/60">Subtotal</span>
               <span className="tabular-nums font-medium">{rupiah(subtotal)}</span>
             </div>
+            {discount > 0 && (
+              <div className="flex justify-between text-hijau-tua">
+                <span className="font-semibold">Diskon voucher</span>
+                <span className="tabular-nums font-bold">−{rupiah(discount)}</span>
+              </div>
+            )}
             <div className="border-t border-black/5 pt-2" />
             <div className="flex justify-between text-base font-extrabold">
               <span>Total</span>
-              <span className="tabular-nums text-brand">{rupiah(estimatedTotal)}</span>
+              <span className="tabular-nums text-brand">{rupiah(total)}</span>
             </div>
           </div>
         </section>
@@ -163,7 +233,7 @@ export function CheckoutForm({
             disabled={orderPending}
             className="flex h-14 w-full items-center justify-center rounded-2xl bg-brand text-base font-extrabold text-white shadow-lg shadow-brand/30 transition-all hover:bg-brand-tua active:scale-[0.98] disabled:opacity-50"
           >
-            {orderPending ? "Membuat pesanan…" : "Proceed to Payment"}
+            {orderPending ? "Membuat pesanan…" : `Bayar ${rupiah(total)}`}
           </button>
           <div className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-tinta/40">
             <svg

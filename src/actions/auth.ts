@@ -59,16 +59,27 @@ export async function verifyUserOtp(_prev: unknown, formData: FormData): Promise
         });
       } else {
         for (const item of guestCart.items) {
-          await db.cartItem.upsert({
-            where: { cart_id_variant_id: { cart_id: userCart.id, variant_id: item.variant_id } },
-            update: { qty: { increment: item.qty } },
-            create: {
-              cart_id: userCart.id,
-              product_id: item.product_id,
-              variant_id: item.variant_id,
-              qty: item.qty,
-            },
+          const existing = await db.cartItem.findFirst({
+            where: item.variant_id
+              ? { cart_id: userCart.id, variant_id: item.variant_id }
+              : { cart_id: userCart.id, bundle_id: item.bundle_id },
           });
+          if (existing) {
+            await db.cartItem.update({
+              where: { id: existing.id },
+              data: { qty: { increment: item.qty } },
+            });
+          } else {
+            await db.cartItem.create({
+              data: {
+                cart_id: userCart.id,
+                product_id: item.product_id,
+                variant_id: item.variant_id,
+                bundle_id: item.bundle_id,
+                qty: item.qty,
+              },
+            });
+          }
         }
         await db.cart.update({ where: { id: guestCart.id }, data: { status: "abandoned" } });
       }

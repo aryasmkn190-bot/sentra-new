@@ -135,7 +135,9 @@ export async function loadProductCards(
   ]);
 
   const cartQty = new Map<string, number>();
-  cart?.items.forEach((i) => cartQty.set(i.variant_id, i.qty));
+  cart?.items.forEach((i) => {
+    if (i.variant_id) cartQty.set(i.variant_id, i.qty);
+  });
 
   let mapped = products
     .map((p) => mapProductCard(p, cartQty))

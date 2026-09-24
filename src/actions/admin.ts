@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { createSession, destroySession, getSession } from "@/lib/session";
 import { transitionOrder } from "@/lib/orders";
+import { hhmmToMinute } from "@/lib/vouchers";
 
 async function requireAdmin() {
   const session = await getSession("admin");
@@ -507,11 +508,12 @@ export async function processRefund(refundId: string) {
   return { ok: true };
 }
 
-/** FR-11.4 — buat voucher. */
-export async function createVoucher(_prev: unknown, formData: FormData) {
+/** FR-11.4 — buat / ubah voucher. */
+export async function upsertVoucher(_prev: unknown, formData: FormData) {
   const admin = await requireAdmin();
   if (!admin) return { error: "Sesi berakhir. Masuk kembali." };
 
+  const id = String(formData.get("id") || "");
   const code = String(formData.get("code") || "").toUpperCase().trim();
   const name = String(formData.get("name") || "").trim();
   const type = String(formData.get("type") || "fixed");
@@ -519,26 +521,59 @@ export async function createVoucher(_prev: unknown, formData: FormData) {
   if (!code || !name || (!value && type !== "free_delivery")) return { error: "Kode, nama, dan nilai wajib diisi." };
 
   const maxDiscountRaw = String(formData.get("max_discount") || "").trim();
+  const startMinute = hhmmToMinute(String(formData.get("start_time") || ""));
+  const endMinute = hhmmToMinute(String(formData.get("end_time") || ""));
+  if (startMinute !== null && endMinute !== null && startMinute === endMinute)
+    return { error: "Jam mulai dan jam selesai tidak boleh sama." };
+
+  const data = {
+    code,
+    name,
+    type,
+    value: type === "free_delivery" ? 0 : value,
+    max_discount: maxDiscountRaw ? parseInt(maxDiscountRaw, 10) : null,
+    min_order_amount: parseInt(String(formData.get("min_order_amount") || "0"), 10),
+    quota_total: parseInt(String(formData.get("quota_total") || "100"), 10),
+    quota_per_user: parseInt(String(formData.get("quota_per_user") || "1"), 10),
+    target_segment: String(formData.get("target_segment") || "all"),
+    start_at: new Date(String(formData.get("start_at"))),
+    end_at: new Date(String(formData.get("end_at"))),
+    is_active: formData.get("is_active") === "on" || formData.get("is_active") === "true",
+    product_ids: formData.getAll("product_id").map(String).filter(Boolean),
+    category_ids: formData.getAll("category_id").map(String).filter(Boolean),
+    bundle_only: formData.get("bundle_only") === "on" || formData.get("bundle_only") === "true",
+    bundle_ids: formData.getAll("bundle_id").map(String).filter(Boolean),
+    days_of_week: formData.getAll("day").map((d) => parseInt(String(d), 10)).filter((n) => !isNaN(n)),
+    start_minute: startMinute,
+    end_minute: endMinute,
+  };
+
   try {
-    const voucher = await db.voucher.create({
-      data: {
-        code,
-        name,
-        type,
-        value: type === "free_delivery" ? 0 : value,
-        max_discount: maxDiscountRaw ? parseInt(maxDiscountRaw, 10) : null,
-        min_order_amount: parseInt(String(formData.get("min_order_amount") || "0"), 10),
-        quota_total: parseInt(String(formData.get("quota_total") || "100"), 10),
-        quota_per_user: parseInt(String(formData.get("quota_per_user") || "1"), 10),
-        target_segment: String(formData.get("target_segment") || "all"),
-        start_at: new Date(String(formData.get("start_at"))),
-        end_at: new Date(String(formData.get("end_at"))),
-      },
-    });
-    await audit(admin.id, "create", "voucher", voucher.id, { code, type, value });
-  } catch {
-    return { error: "Kode voucher sudah dipakai." };
+    if (id) {
+      const voucher = await db.voucher.update({ where: { id }, data });
+      await audit(admin.id, "update", "voucher", voucher.id, { code, type, value, is_active: data.is_active });
+    } else {
+      const voucher = await db.voucher.create({ data });
+      await audit(admin.id, "create", "voucher", voucher.id, { code, type, value });
+    }
+  } catch (e: any) {
+    if (e?.code === "P2002") return { error: "Kode voucher sudah dipakai." };
+    return { error: "Gagal menyimpan voucher." };
   }
+  revalidatePath("/admin/voucher");
+  return { ok: true };
+}
+
+/** FR-11.4 — hapus voucher (ditolak bila sudah terpakai). */
+export async function deleteVoucher(id: string) {
+  const admin = await requireAdmin();
+  if (!admin) return { error: "Sesi berakhir. Masuk kembali." };
+
+  const used = await db.voucherUsage.count({ where: { voucher_id: id } });
+  if (used > 0) return { error: `Voucher sudah dipakai ${used}× — tidak bisa dihapus. Nonaktifkan saja.` };
+
+  await db.voucher.delete({ where: { id } });
+  await audit(admin.id, "delete", "voucher", id);
   revalidatePath("/admin/voucher");
   return { ok: true };
 }
@@ -1245,6 +1280,32 @@ export async function getVouchers(page?: number, q?: string) {
   ]);
 
   return { items, totalItems, currentPage };
+}
+
+/** Opsi utk form voucher: daftar kategori, produk, dan paket bundling. */
+export async function getVoucherFormOptions() {
+  const admin = await requireAdmin();
+  if (!admin) return null;
+
+  const [categories, products, bundles] = await Promise.all([
+    db.category.findMany({
+      where: { is_active: true },
+      select: { id: true, name: true },
+      orderBy: { sort_order: "asc" },
+    }),
+    db.product.findMany({
+      where: { status: "active" },
+      select: { id: true, name: true, sku: true },
+      orderBy: { name: "asc" },
+      take: 500,
+    }),
+    db.productBundle.findMany({
+      where: { is_active: true },
+      select: { id: true, name: true, price: true },
+      orderBy: { name: "asc" },
+    }),
+  ]);
+  return { categories, products, bundles };
 }
 
 // ===================== USER MANAGEMENT =====================

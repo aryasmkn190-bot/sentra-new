@@ -2,14 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import jsQR from "jsqr";
 import { resolveDirectScan } from "@/actions/direct-order";
+import { rupiah } from "@/lib/money";
 
 type BarcodeDetectorLike = {
   detect: (source: ImageBitmapSource) => Promise<{ rawValue: string }[]>;
 };
 
-export function DirectScanner() {
+export function DirectScanner({ directProducts = [] }: { directProducts?: any[] }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -216,6 +218,54 @@ export function DirectScanner() {
           {busy ? "Memeriksa…" : "Lanjut"}
         </button>
       </form>
+
+      {/* Katalog Cepat Produk Order Langsung di Hub PTO Bandung */}
+      {directProducts.length > 0 && (
+        <div className="kartu p-4 space-y-3">
+          <div className="flex items-center justify-between border-b border-black/5 pb-2">
+            <div>
+              <p className="text-xs font-extrabold text-slate-900">
+                Produk Langsung di Hub PTO Bandung
+              </p>
+              <p className="text-[10px] text-slate-500">
+                Pilih langsung tanpa perlu scan kamera satu-satu
+              </p>
+            </div>
+            <span className="rounded-full bg-[#FFD54A] px-2 py-0.5 text-[10px] font-extrabold text-[#1A0505]">
+              {directProducts.length} Produk
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {directProducts.map((p) => (
+              <Link
+                key={p.id}
+                href={`/order-langsung/p/${p.qr_token}`}
+                className="flex items-center gap-2.5 rounded-xl border border-black/5 p-2.5 hover:bg-slate-50 transition"
+              >
+                <div className="h-11 w-11 shrink-0 overflow-hidden rounded-lg bg-slate-100 flex items-center justify-center">
+                  {p.image_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={p.image_url} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <span className="text-lg">📦</span>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold text-slate-800 truncate">{p.name}</p>
+                  <p className="text-xs font-extrabold text-[#A00000] tabular-nums">
+                    {rupiah(p.price)}
+                  </p>
+                  <p className="text-[10px] text-slate-400">
+                    Stok: {p.available > 0 ? `${p.available} tersedia` : "Habis"}
+                  </p>
+                </div>
+                <span className="text-xs font-bold text-[#A00000]">Pilih →</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       <p className="text-center text-[11px] text-slate-400">
         Butuh HTTPS + izin kamera. Dekatkan QR ke kotak putih.

@@ -61,7 +61,9 @@ export async function applySalesOnOrderCompleted(orderId: string, client: Tx = d
     select: { product_id: true },
   });
 
-  const productIds = Array.from(new Set(items.map((i) => i.product_id)));
+  const productIds = Array.from(
+    new Set(items.map((i) => i.product_id).filter((id): id is string => Boolean(id)))
+  );
   for (const productId of productIds) {
     await recomputeProductSoldCount(productId, client);
   }

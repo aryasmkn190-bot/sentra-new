@@ -39,7 +39,9 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
 
   const cart = await getActiveCart();
   const cartQty = new Map<string, number>();
-  cart?.items.forEach((i) => cartQty.set(i.variant_id, i.qty));
+  cart?.items.forEach((i) => {
+    if (i.variant_id) cartQty.set(i.variant_id, i.qty);
+  });
 
   const storeVariants = product.variants.map((v) => {
     const stock = stocks.find((s) => s.variant_id === v.id);

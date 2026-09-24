@@ -39,6 +39,7 @@ model User {
   product_reviews    ProductReview[]
   freshness_claims   FreshnessClaim[]
   voucher_usages     VoucherUsage[]
+  voucher_claims     ClaimedVoucher[]
   notifications      Notification[]
   announcement_reads UserAnnouncementRead[]
   chat_threads       ChatThread[]
@@ -173,13 +174,14 @@ model Product {
   created_at        DateTime @default(now())
   updated_at        DateTime @updatedAt
 
-  category         Category         @relation(fields: [category_id], references: [id])
+  category         Category            @relation(fields: [category_id], references: [id])
   images           ProductImage[]
   variants         ProductVariant[]
   hub_stocks       HubStock[]
   cart_items       CartItem[]
   order_items      OrderItem[]
   product_reviews  ProductReview[]
+  bundle_items     ProductBundleItem[]
 
   @@index([sold_count])
   @@index([rating_avg])
@@ -202,11 +204,12 @@ model ProductVariant {
   created_at       DateTime @default(now())
   updated_at       DateTime @updatedAt
 
-  product     Product        @relation(fields: [product_id], references: [id], onDelete: Cascade)
-  images      ProductImage[]
-  hub_stocks  HubStock[]
-  cart_items  CartItem[]
-  order_items OrderItem[]
+  product      Product             @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  images       ProductImage[]
+  hub_stocks   HubStock[]
+  cart_items   CartItem[]
+  order_items  OrderItem[]
+  bundle_items ProductBundleItem[]
 
   @@index([product_id, is_active])
   @@map("product_variants")
@@ -286,18 +289,21 @@ model Cart {
 model CartItem {
   id         String   @id @default(uuid())
   cart_id    String
-  product_id String
-  variant_id String
+  product_id String?
+  variant_id String?
+  bundle_id  String?
   qty        Int
   note       String?
   created_at DateTime @default(now())
 
-  cart    Cart           @relation(fields: [cart_id], references: [id], onDelete: Cascade)
-  product Product        @relation(fields: [product_id], references: [id])
-  variant ProductVariant @relation(fields: [variant_id], references: [id])
+  cart    Cart            @relation(fields: [cart_id], references: [id], onDelete: Cascade)
+  product Product?        @relation(fields: [product_id], references: [id])
+  variant ProductVariant? @relation(fields: [variant_id], references: [id])
+  bundle  ProductBundle?  @relation(fields: [bundle_id], references: [id], onDelete: Cascade)
 
-  @@unique([cart_id, variant_id])
+  @@index([cart_id, variant_id])
   @@index([cart_id, product_id])
+  @@index([cart_id, bundle_id])
   @@map("cart_items")
 }
 
@@ -308,6 +314,8 @@ model Order {
   hub_id                  String
   address_id              String?
   drop_point_id           String?
+  batch_id                String?
+  batch_name              String?
   address_snapshot        Json?
   status                  String    @default("pending_payment")
   subtotal_amount         Int
@@ -328,6 +336,7 @@ model Order {
   hub              Hub                  @relation(fields: [hub_id], references: [id])
   address          Address?             @relation(fields: [address_id], references: [id])
   dropPoint        DropPoint?           @relation(fields: [drop_point_id], references: [id])
+  batch            PurchaseBatch?       @relation(fields: [batch_id], references: [id])
   items            OrderItem[]
   status_histories OrderStatusHistory[]
   payments         Payment[]
@@ -343,10 +352,12 @@ model Order {
 model OrderItem {
   id                     String  @id @default(uuid())
   order_id               String
-  product_id             String
+  product_id             String?
   variant_id             String?
+  bundle_id              String?
   product_name_snapshot  String
   variant_name_snapshot  String  @default("")
+  bundle_name_snapshot   String?
   price_snapshot         Int
   qty_ordered            Int
   qty_fulfilled          Int     @default(0)
@@ -355,11 +366,13 @@ model OrderItem {
   subtotal               Int
 
   order            Order            @relation(fields: [order_id], references: [id])
-  product          Product          @relation(fields: [product_id], references: [id])
+  product          Product?         @relation(fields: [product_id], references: [id])
   variant          ProductVariant?  @relation(fields: [variant_id], references: [id])
+  bundle           ProductBundle?   @relation(fields: [bundle_id], references: [id])
   freshness_claims FreshnessClaim[]
 
   @@index([variant_id])
+  @@index([bundle_id])
   @@map("order_items")
 }
 
@@ -429,11 +442,36 @@ model Voucher {
   end_at           DateTime
   is_active        Boolean  @default(true)
 
+  // Ketentuan voucher (opsional; kosong = tidak dibatasi)
+  product_ids  String[] @default([]) // hanya berlaku utk produk tertentu
+  category_ids String[] @default([]) // hanya berlaku utk kategori tertentu
+  bundle_only  Boolean  @default(false) // khusus paket / bundling
+  bundle_ids   String[] @default([]) // hanya berlaku utk paket tertentu
+  days_of_week Int[]    @default([]) // 0=Minggu..6=Sabtu (getDay); kosong = semua hari
+  start_minute Int? // menit sejak 00:00 (mis. 09:00 = 540)
+  end_minute   Int? // menit sejak 00:00; end < start = lintas tengah malam
+
   usages            VoucherUsage[]
+  claims            ClaimedVoucher[]
   referrer_rewards  Referral[]     @relation("ReferrerVoucher")
   referee_rewards   Referral[]     @relation("RefereeVoucher")
 
   @@map("vouchers")
+}
+
+model ClaimedVoucher {
+  id         String   @id @default(uuid())
+  user_id    String
+  voucher_id String
+  claimed_at DateTime @default(now())
+  status     String   @default("claimed") // claimed | used | expired
+  order_id   String?  @unique
+
+  user    User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  voucher Voucher @relation(fields: [voucher_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, voucher_id])
+  @@map("claimed_vouchers")
 }
 
 model VoucherUsage {
@@ -750,6 +788,7 @@ model DirectProduct {
   id           String   @id @default(uuid())
   name         String
   description  String   @default("")
+  category     String   @default("Order Langsung")
   price        Int
   stock_qty    Int      @default(0)
   reserved_qty Int      @default(0)
@@ -814,4 +853,65 @@ model DirectPayment {
   order DirectOrder @relation(fields: [order_id], references: [id], onDelete: Cascade)
 
   @@map("direct_payments")
+}
+
+// ─── Sistem Batch Pembelian (Sentra New) ───
+
+model PurchaseBatch {
+  id             String    @id @default(uuid())
+  name           String    @default("Batch 29")
+  description    String    @default("")
+  is_active      Boolean   @default(true) // Sistem batch aktif/nonaktif
+  open_day       Int       @default(3)    // 0=Minggu, 1=Senin, 2=Selasa, 3=Rabu, 4=Kamis, 5=Jumat, 6=Sabtu
+  open_time      String    @default("07:00") // Format "HH:mm" (WIB)
+  close_day      Int       @default(4)    // 4=Kamis
+  close_time     String    @default("20:00") // Format "HH:mm" (WIB)
+  start_date     DateTime? // Tanggal mulai spesifik (opsional)
+  end_date       DateTime? // Tanggal selesai spesifik (opsional)
+  override_mode  String    @default("auto") // auto | force_open | force_closed
+  closed_message String?   @default("Pembelian sentra sedang ditutup dan akan dibuka sesuai jadwal batch. Produk Order Langsung tetap bisa dipesan.")
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+
+  orders         Order[]
+
+  @@map("purchase_batches")
+}
+
+// ─── Produk Bundling / Paket (Sentra New) ───
+
+model ProductBundle {
+  id               String              @id @default(uuid())
+  name             String
+  slug             String              @unique
+  description      String              @default("")
+  image_url        String?
+  price            Int                 // Harga jual paket
+  compare_at_price Int?                // Harga coret display
+  is_active        Boolean             @default(true)
+  sort_order       Int                 @default(0)
+  created_at       DateTime            @default(now())
+  updated_at       DateTime            @updatedAt
+
+  items            ProductBundleItem[]
+  cart_items       CartItem[]
+  order_items      OrderItem[]
+
+  @@map("product_bundles")
+}
+
+model ProductBundleItem {
+  id         String          @id @default(uuid())
+  bundle_id  String
+  product_id String
+  variant_id String?
+  qty        Int             @default(1)
+
+  bundle     ProductBundle   @relation(fields: [bundle_id], references: [id], onDelete: Cascade)
+  product    Product         @relation(fields: [product_id], references: [id], onDelete: Cascade)
+  variant    ProductVariant? @relation(fields: [variant_id], references: [id], onDelete: Cascade)
+
+  @@index([bundle_id])
+  @@index([product_id])
+  @@map("product_bundle_items")
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useCallback, type ReactNode } from "react";
+import { useState, useTransition, useCallback, useRef, type ReactNode } from "react";
 import Link from "next/link";
 import { ProductCard, type ProductCardData } from "@/components/ProductCard";
 import { CategoryImage } from "@/components/CategoryImage";
@@ -41,6 +41,8 @@ export function HomeCatalog({
   const [promoProducts, setPromoProducts] = useState<ProductCardData[]>(initialPromoProducts);
   const [visibleBest, setVisibleBest] = useState(BEST_INITIAL_SEMUA);
   const [isPending, startTransition] = useTransition();
+  // Target scroll halus saat kategori diklik
+  const productsRef = useRef<HTMLElement>(null);
 
   const initialLimitFor = useCallback((slug: string) => {
     return slug === "semua" ? BEST_INITIAL_SEMUA : BEST_INITIAL_KATEGORI;
@@ -51,6 +53,10 @@ export function HomeCatalog({
       if (slug === activeSlug) return;
       setActiveSlug(slug);
       setVisibleBest(initialLimitFor(slug));
+      // Scroll halus ke grid produk (setelah state kategori di-commit)
+      requestAnimationFrame(() => {
+        productsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
       startTransition(async () => {
         const result = await getHomeProductsByCategory(slug === "semua" ? null : slug);
         setProducts(result.products);
@@ -122,7 +128,7 @@ export function HomeCatalog({
         {children}
 
         {/* Penawaran Terbaik — curated ringkas + muat lebih banyak */}
-        <section>
+        <section ref={productsRef} className="scroll-mt-4 pb-5">
           <div className="mb-3 flex items-end justify-between gap-2">
             <div>
               <h2 className="text-base font-extrabold text-slate-900">

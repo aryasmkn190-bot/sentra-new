@@ -242,7 +242,11 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
               </p>
             </div>
             {order.items
-              .filter((it) => it.status === "fulfilled" || it.status === "substituted")
+              .filter(
+                (it): it is typeof it & { product_id: string } =>
+                  (it.status === "fulfilled" || it.status === "substituted") &&
+                  Boolean(it.product_id)
+              )
               .map((it) => {
                 const already = productReviews.find((r) => r.product_id === it.product_id);
                 if (already || reviewedProductIds.has(it.product_id)) {

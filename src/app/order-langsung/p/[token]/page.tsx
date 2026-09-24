@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getDirectProductByToken } from "@/actions/direct-order";
+import { getDirectProductByToken, getActiveDirectProducts } from "@/actions/direct-order";
 import { DirectBuyForm } from "./DirectBuyForm";
 import { rupiah } from "@/lib/money";
 
@@ -10,8 +10,13 @@ export default async function DirectProductPage({
   params: Promise<{ token: string }>;
 }) {
   const { token } = await params;
-  const product = await getDirectProductByToken(token);
+  const [product, allDirectProducts] = await Promise.all([
+    getDirectProductByToken(token),
+    getActiveDirectProducts(),
+  ]);
   if (!product) notFound();
+
+  const otherProducts = allDirectProducts.filter((p) => p.id !== product.id);
 
   return (
     <div className="space-y-4 px-4 pt-2 pb-28">
@@ -32,7 +37,7 @@ export default async function DirectProductPage({
         </div>
         <div className="space-y-2 p-4">
           <p className="text-[11px] font-extrabold uppercase tracking-wide text-[#A00000]">
-            Order Langsung
+            Order Langsung · Hub PTO Bandung
           </p>
           <h1 className="text-lg font-extrabold leading-snug">{product.name}</h1>
           <p className="text-2xl font-extrabold tabular-nums text-[#A00000]">{rupiah(product.price)}</p>
@@ -49,7 +54,10 @@ export default async function DirectProductPage({
       </div>
 
       {product.available > 0 ? (
-        <DirectBuyForm token={product.qr_token} price={product.price} maxQty={product.available} />
+        <DirectBuyForm
+          currentProduct={product}
+          otherProducts={otherProducts}
+        />
       ) : (
         <div className="rounded-2xl bg-red-50 p-4 text-sm font-bold text-merah">Stok habis</div>
       )}
