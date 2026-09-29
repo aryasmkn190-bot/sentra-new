@@ -17,6 +17,12 @@
       "service": "sentra"
     }
   ],
+  "routes": [
+    {
+      "pattern": "sentra.bergerak.space",
+      "custom_domain": true
+    }
+  ],
   "r2_buckets": [
     {
       "binding": "NEXT_INC_CACHE_R2_BUCKET",
