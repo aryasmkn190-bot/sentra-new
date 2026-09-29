@@ -421,7 +421,13 @@ export async function placeDirectOrder(_prev: unknown, formData: FormData) {
   }
 
   const returnUrl = `${publicAppOrigin()}/order-langsung/selesai/${orderId}`;
-  const paymentUrl = getPaymentUrl(orderNumber, total, returnUrl);
+  let paymentUrl: string;
+  try {
+    paymentUrl = await getPaymentUrl(orderNumber, total, returnUrl);
+  } catch (e: any) {
+    console.error("[placeDirectOrder] Gagal membuat URL pembayaran Pakasir:", e);
+    redirect(`${returnUrl}?error=payment_gateway_error`);
+  }
   redirect(paymentUrl);
 }
 

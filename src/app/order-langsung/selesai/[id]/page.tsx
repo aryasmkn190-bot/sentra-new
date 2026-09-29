@@ -23,14 +23,18 @@ export default async function DirectOrderDonePage({
   ]);
   if (!order) notFound();
 
-  const payAgain =
-    order.status === "pending_payment" && order.payment?.status === "pending"
-      ? getPaymentUrl(
-          order.order_number,
-          order.total_amount,
-          `${publicAppOrigin()}/order-langsung/selesai/${order.id}`
-        )
-      : null;
+  let payAgain: string | null = null;
+  if (order.status === "pending_payment" && order.payment?.status === "pending") {
+    try {
+      payAgain = await getPaymentUrl(
+        order.order_number,
+        order.total_amount,
+        `${publicAppOrigin()}/order-langsung/selesai/${order.id}`
+      );
+    } catch (e) {
+      console.error("[OrderLangsungSelesaiPage] Failed to get payment url:", e);
+    }
+  }
 
   const done = order.status === "completed";
 

@@ -4,6 +4,7 @@ import { getSession } from "@/lib/session";
 import { rupiah } from "@/lib/money";
 import { ORDER_FLOW, STATUS_LABEL } from "@/lib/order-status";
 import { expireIfOverdue } from "@/lib/payment";
+import { getPaymentUrl } from "@/lib/pakasir";
 import { simulatePaymentSuccess, cancelOrder, reorder } from "@/actions/checkout";
 import { StatusBadge } from "@/components/StatusBadge";
 import { ActionButton } from "@/components/ActionButton";
@@ -56,8 +57,22 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   const canCancel =
     ["pending_payment", "confirmed"].includes(order.status) &&
     (!order.picking_task || order.picking_task.status === "queued");
-  const mockMode = process.env.PAYMENT_MODE !== "midtrans";
+  const mockMode = process.env.PAYMENT_MODE === "mock";
   const driver = order.delivery_task?.driver;
+
+  let payAgainUrl: string | null = null;
+  if (order.status === "pending_payment" && payment?.status === "pending") {
+    try {
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://sentra.bergerak.space";
+      payAgainUrl = await getPaymentUrl(
+        order.order_number,
+        payment.amount,
+        `${appUrl}/pesanan/${order.id}`
+      );
+    } catch (e) {
+      console.error("[OrderDetailPage] Failed to get payment url:", e);
+    }
+  }
 
   return (
     <div className="space-y-4 px-4 pt-4">
@@ -80,9 +95,19 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
               Simulasi bayar (mode dev)
             </ActionButton>
           ) : (
-            <p className="rounded-xl bg-hijau-muda p-3 text-xs">
-              Selesaikan pembayaran melalui Pakasir (QRIS / Virtual Account). Status akan otomatis terbarui setelah pembayaran diterima.
-            </p>
+            <div className="space-y-3">
+              {payAgainUrl && (
+                <a
+                  href={payAgainUrl}
+                  className="btn-utama block w-full text-center py-2.5 font-bold shadow-md shadow-brand/20"
+                >
+                  Bayar Sekarang ({rupiah(payment.amount)})
+                </a>
+              )}
+              <p className="rounded-xl bg-hijau-muda p-3 text-xs text-tinta/80">
+                Selesaikan pembayaran melalui Pakasir (QRIS / Virtual Account). Status pesanan akan otomatis terbarui menjadi Lunas setelah pembayaran diverifikasi.
+              </p>
+            </div>
           )}
         </section>
       )}

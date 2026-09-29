@@ -288,9 +288,15 @@ export async function placeOrder(_prev: unknown, formData: FormData): Promise<{ 
   }
 
   // Redirect to Pakasir payment page
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://web.locusgroup.site";
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://sentra.bergerak.space";
   const returnUrl = `${appUrl}/pesanan/${orderId}`;
-  const paymentUrl = getPaymentUrl(orderNumber, total, returnUrl);
+  let paymentUrl: string;
+  try {
+    paymentUrl = await getPaymentUrl(orderNumber, total, returnUrl);
+  } catch (e: any) {
+    console.error("[placeOrder] Gagal membuat URL pembayaran Pakasir:", e);
+    redirect(`${returnUrl}?error=payment_gateway_error`);
+  }
   redirect(paymentUrl);
 }
 

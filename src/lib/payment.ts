@@ -32,10 +32,7 @@ export async function settlePayment(paymentId: string, gatewayTxnId?: string, ra
     });
     if (!payment) throw new Error("Pembayaran tidak ditemukan");
     if (payment.status === "paid") return payment; // idempotent
-
-    if (payment.expired_at < new Date()) {
-      throw new Error("Pembayaran sudah kedaluwarsa");
-    }
+    if (payment.order.status === "confirmed") return payment;
 
     await tx.payment.update({
       where: { id: payment.id },

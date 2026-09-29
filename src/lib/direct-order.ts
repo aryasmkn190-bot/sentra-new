@@ -66,7 +66,7 @@ export async function settleDirectPayment(
     });
     if (!payment) throw new Error("Pembayaran order langsung tidak ditemukan");
     if (payment.status === "paid") return payment;
-    if (payment.expired_at < new Date()) throw new Error("Pembayaran sudah kedaluwarsa");
+    if (payment.order.status === "completed") return payment;
 
     await tx.directPayment.update({
       where: { id: payment.id },
@@ -113,7 +113,7 @@ export function publicAppOrigin(): string {
   return (
     process.env.NEXT_PUBLIC_APP_URL ||
     process.env.APP_URL ||
-    "https://web.locusgroup.site"
+    "https://sentra.bergerak.space"
   ).replace(/\/$/, "");
 }
 
